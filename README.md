@@ -6,8 +6,9 @@ Utilities for moving a FusionPBX installation from an existing Debian server to 
 
 - `prepare-old-pbx.sh` — prepares the source PBX, installs required tools, creates a fresh FusionPBX backup, and records basic source-system information.
 - `migrate-new-pbx.sh` — stages the migration on the destination PBX, copies FusionPBX/FreeSWITCH data, restores PostgreSQL, and leaves FreeSWITCH disabled so cutover can be done deliberately.
+- `fusionpbx-trixie-firewall.sh` — configures a persistent FusionPBX firewall on Debian 13/Trixie using Debian's nftables-backed `iptables` compatibility layer.
 
-Both scripts install `zip` in addition to the migration dependencies. This avoids failures on minimal Debian installs where `zip` is not installed by default.
+Both migration scripts install `zip` in addition to the migration dependencies. This avoids failures on minimal Debian installs where `zip` is not installed by default.
 
 ## Default migration addresses
 
@@ -25,11 +26,37 @@ OLD_PBX=192.168.1.4 NEW_PBX=192.168.1.192 ./migrate-new-pbx.sh
 
 ## Requirements
 
-- Run both scripts as `root`.
+- Run the scripts as `root`.
 - The destination PBX must already have a fresh FusionPBX installation.
 - Root SSH from the destination PBX to the source PBX must work during the migration.
 - Keep the source PBX online and handling calls until the migration script finishes and the destination web UI has been verified.
 - Keep the source PBX available as a rollback until inbound/outbound calls are confirmed on the destination.
+
+## Debian 13 / Trixie firewall
+
+The standard FusionPBX Debian installer currently has explicit iptables setup for older Debian releases but may leave a minimal Trixie installation without the intended base firewall.
+
+Run the firewall utility from the VM/local console when possible:
+
+```bash
+chmod +x fusionpbx-trixie-firewall.sh
+./fusionpbx-trixie-firewall.sh
+```
+
+The firewall script:
+
+1. Verifies Debian 13/Trixie.
+2. Backs up the existing IPv4 and IPv6 rules.
+3. Installs `iptables`, `iptables-persistent`, and `netfilter-persistent`.
+4. Selects Debian's `iptables-nft` / `ip6tables-nft` compatibility backend.
+5. Detects the active SSH port before applying a DROP policy.
+6. Preserves/normalizes FusionPBX `sip-auth-*` chains when they exist.
+7. Allows the standard FusionPBX web, SIP, RTP, ICMP, and OpenVPN ports.
+8. Adds the standard RTP/SIP DSCP markings.
+9. Applies matching IPv6 protection rather than leaving IPv6 open.
+10. Saves the rules to `/etc/iptables/rules.v4` and `rules.v6` for reboot persistence.
+
+After applying the firewall, verify SSH and HTTPS from another machine before rebooting. Also test SIP registration and two-way RTP audio before exposing the PBX publicly.
 
 ## Source PBX
 
@@ -116,6 +143,12 @@ fs_cli -x "sofia status"
 ```
 
 Then test inbound and outbound calls before retiring the old VM.
+
+## License
+
+This repository is released under the MIT License. See `LICENSE`.
+
+FusionPBX and FreeSWITCH are separate projects with their own licenses. This repository is not an official FusionPBX project.
 
 ## Notes
 
