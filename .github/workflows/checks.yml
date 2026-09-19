@@ -1,0 +1,34 @@
+name: Debian checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    timeout-minutes: 15
+    steps:
+      - name: Install test dependencies
+        run: |
+          apt-get update
+          apt-get install -y python3 php-cli php-curl git ca-certificates postgresql
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python behavior and safety
+        run: python3 -B tests/test_toolkit.py
+      - name: PHP syntax and adapter HTTP tests
+        run: |
+          python3 -c "from pathlib import Path; import subprocess; [subprocess.run(['php','-l',str(p)],check=True) for root in ('assets','tests') for p in Path(root).rglob('*.php')]"
+          python3 -B tests/test_adapter_http.py
+      - name: PostgreSQL recovery test
+        run: |
+          pg_ctlcluster 17 main start
+          PBXCTL_INTEGRATION=1 python3 -B tests/test_postgres.py
+      - name: Offline plan
+        run: python3 -B pbxctl.py plan --modules backup,audio,smtp
+      - name: Release manifest
+        run: python3 -B -c "from lib.updates import validate_release; validate_release('.')"

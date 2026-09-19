@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+site.json
+*.dump
+*.tar.gz
+*.zip
+secrets/
+*.log
