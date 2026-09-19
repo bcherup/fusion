@@ -98,6 +98,7 @@ def configure(c,modules,allow_restart=False):
                 rollback_change(ch);raise
         if any(m in modules for m in ('audio','hardening','smtp','transcription')):
             invalidate(c,['configuration:sofia.conf','configuration:acl.conf','settings:'+c['domain'],'directory:'+c['mailbox']+'@'+c['domain']])
+        if 'hardening' in modules:run(['fail2ban-client','reload'])
         if restart:idle();run(['systemctl','restart','freeswitch'],timeout=120)
         for p in Path('/etc/php').glob('*/fpm'):
             run(['systemctl','reload','php'+p.parent.name+'-fpm'],check=False)
@@ -110,6 +111,7 @@ def configure(c,modules,allow_restart=False):
             if before_marker is None:marker.unlink(missing_ok=True)
             else:atomic(marker,before_marker)
         run(['systemctl','daemon-reload'],check=False)
+        if 'hardening' in modules:run(['fail2ban-client','reload'],check=False)
         raise
 
 def deploy(source,c):

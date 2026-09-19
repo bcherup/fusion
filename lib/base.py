@@ -33,7 +33,8 @@ def install(c):
     # The upstream installer prints initial credentials; capture them only in this root-only log.
     with log.open('x') as f:
         os.chmod(log,0o600)
-        r=subprocess.run(['bash',source/'debian/install.sh'],stdout=f,stderr=subprocess.STDOUT,timeout=14400)
+        # The upstream installer creates public runtime directories; its umask must not inherit the private-log mask.
+        r=subprocess.run(['bash',source/'debian/install.sh'],stdout=f,stderr=subprocess.STDOUT,timeout=14400,umask=0o022)
     need(r.returncode==0,'Base installation failed; inspect /var/lib/pbxctl/base-install.log locally')
     for name in ('postgresql','nginx','freeswitch'):run(['systemctl','is-active',name])
     need(Path(c['web_root']+'/resources/require.php').is_file(),'Base application missing')

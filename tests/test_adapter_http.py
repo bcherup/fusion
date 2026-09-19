@@ -33,7 +33,7 @@ def main():
         with tempfile.TemporaryDirectory() as tmp:
             directory=Path(tmp);interface=Path(os.environ.get('TRANSCRIBE_INTERFACE',str(directory/'transcribe_interface.php')))
             if not interface.exists():
-                url='https://raw.githubusercontent.com/fusionpbx/fusionpbx-app-transcribe/d0c5420e945a1303f7f9bc49c027820d5b72deda/resources/classes/transcribe_interface.php'
+                url='https://raw.githubusercontent.com/fusionpbx/fusionpbx-app-transcribe/d0c5420e945a1303f7f9bc49c027820d5b72deda/resources/interfaces/transcribe_interface.php'
                 interface.write_bytes(urllib.request.urlopen(url,timeout=30).read())
             (directory/'fixture.wav').write_bytes(b'RIFF synthetic fixture')
             for endpoint,expected in [('ok','First sentence. Second sentence.'),('failure',''),('redirect',''),('json',None)]:

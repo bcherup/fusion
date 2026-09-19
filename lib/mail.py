@@ -28,8 +28,8 @@ def send(c,subject,body):
 def configure(db,c,ch):
     s=c['smtp'];validate_ready(s);d=pbx.domain(db,c)
     password=read_secret(s['password_file']) if s['auth'] else ''
-    values={'method':'smtp','smtp_host':s['host'],'smtp_port':s['port'],
-       'smtp_secure':{'starttls':'tls','tls':'ssl','none':''}[s['security']],
+    values={'smtp_host':s['host'],'smtp_port':s['port'],
+       'smtp_secure':{'starttls':'tls','tls':'ssl','none':'none'}[s['security']],
        'smtp_auth':'true' if s['auth'] else 'false','smtp_username':s['username'],
        'smtp_password':password,'smtp_from':s['from_address'],'smtp_from_name':s['from_name'],
        'smtp_validate_certificate':'true'}

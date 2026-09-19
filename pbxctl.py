@@ -152,6 +152,7 @@ def dispatch(a,c,mods):
         change=SimpleNamespace(path=Path(a.archive),rollback=lambda:rollback(a.archive,Database(c['database'])))
         operations.rollback_change(change);markers[0].unlink()
         run(['systemctl','daemon-reload'])
+        if markers[0].stem=='hardening':run(['fail2ban-client','reload'])
         return {'rolled_back':a.archive,'next':'Review required service activation before restarting'}
 
 if __name__=='__main__':
