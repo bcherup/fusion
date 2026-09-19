@@ -62,7 +62,9 @@ def configure(c,modules,allow_restart=False):
     if previous_config:
         for m in ('tls','hardening','audio','transcription','smtp','alerts','offsite','backup'):
             if m not in modules and (STATE/(m+'.json')).exists():
-                need(module_config(c,m)==module_config(previous_config,m),'Also select '+m+' because its configuration changes')
+                desired=json.loads((STATE/(m+'.json')).read_text())['desired']
+                desired.pop('credential_digest',None)
+                need(module_config(c,m)==desired,'Also select '+m+' because its configuration changes')
     atomic(CONFIG,json.dumps(c,indent=2)+'\n',0o644)
     results=[];restart=False;completed=[]
     try:

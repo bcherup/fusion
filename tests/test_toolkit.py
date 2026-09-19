@@ -175,6 +175,19 @@ class UpdateTests(unittest.TestCase):
             with self.assertRaises(common.Error):updates.validate_release(p)
 
 class CliTests(unittest.TestCase):
+    def test_setup_refuses_active_config_overwrite(self):
+        with patch.object(pbxctl,'wizard') as wizard:
+            with self.assertRaises(common.Error):pbxctl.main(['setup','--config',str(pbxctl.CONFIG)])
+            wizard.assert_not_called()
+    def test_new_install_uses_saved_local_site(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old=os.getcwd()
+            try:
+                os.chdir(tmp);Path('site.json').write_text(json.dumps(sample()))
+                with patch.object(pbxctl,'load_config',wraps=pbxctl.load_config) as load:
+                    pbxctl.main(['plan'])
+                    self.assertEqual(load.call_args.args[0],'site.json')
+            finally:os.chdir(old)
     def test_configure_defaults_to_plan(self):
         with patch('lib.base.supported') as privileged:
             result=pbxctl.main(['configure','--config',str(ROOT/'site.example.json'),'--modules','smtp'])

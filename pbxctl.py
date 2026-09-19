@@ -14,7 +14,7 @@ SOURCE=Path(__file__).resolve().parent
 def parser():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('action',nargs='?',default='menu',choices=['menu','setup','plan','install','deploy','configure','certificate','smtp-credential','test-email','backup','verify-backup','restore','activate','migrate','check','check-media','firewall','update','offsite-init','offsite-upload','offsite-restore','retention','rollback'])
-    p.add_argument('--config',default=str(CONFIG) if CONFIG.exists() else str(SOURCE/'site.example.json'))
+    p.add_argument('--config',help='Site configuration; setup saves a candidate before configure applies it')
     p.add_argument('--modules',help='Comma-separated optional modules: '+','.join(MODULES))
     p.add_argument('--apply',action='store_true',help='Perform the displayed action; otherwise show a plan')
     p.add_argument('--allow-restart',action='store_true');p.add_argument('--source-stopped',action='store_true')
@@ -32,7 +32,9 @@ def menu():
     if not answer:return
     need(answer.isdigit() and 1<=int(answer)<=len(choices),'Invalid choice')
     action=choices[int(answer)-1];args=[action]
-    if action=='setup':args+=['--config',str(CONFIG) if CONFIG.exists() else 'site.json']
+    candidate=Path('/root/pbxctl-site.json') if CONFIG.exists() else Path('site.json')
+    default=candidate if action=='setup' or candidate.exists() else CONFIG if CONFIG.exists() else SOURCE/'site.example.json'
+    args+=['--config',input('Site configuration file ['+str(default)+']: ').strip() or str(default)]
     if action in ('configure','install'):
         print('Optional modules: '+', '.join(MODULES));mods=input('Modules to configure (empty skips): ').strip()
         if mods:args+=['--modules',mods]
@@ -62,7 +64,11 @@ def media(uuid):
 def main(argv=None):
     a=parser().parse_args(argv)
     if a.action=='menu':return menu()
-    if a.action=='setup':return wizard(a.config,SOURCE/'site.example.json')
+    if a.action=='setup':
+        candidate=Path(a.config) if a.config else Path('/root/pbxctl-site.json') if CONFIG.exists() else Path('site.json')
+        need(candidate.resolve()!=CONFIG.resolve(),'Save a candidate file, then apply it with configure --config PATH')
+        return wizard(candidate,CONFIG if CONFIG.exists() else SOURCE/'site.example.json')
+    if not a.config:a.config=str(CONFIG if CONFIG.exists() else Path('site.json') if Path('site.json').exists() else SOURCE/'site.example.json')
     c=load_config(a.config);mods=selected(a.modules) if a.modules else []
     if a.action=='plan':return {'os':'Debian 13 Trixie','selected':mods,'available':MODULES,'smtp':'Generic STARTTLS/implicit TLS or authorized relay','transcription':'Optional; no Whisper download when skipped','update':'Explicit PBX fast-forward or separately verified toolkit release','changes':False}
     if a.action in ('install','deploy','configure','certificate','restore','activate','migrate','offsite-init','offsite-upload','offsite-restore','retention','rollback') and not a.apply:
