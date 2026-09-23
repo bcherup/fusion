@@ -1,5 +1,5 @@
 {
-  "version": "0.3.0",
+  "version": "0.3.1",
   "sha256": {
     ".gitattributes": "d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c",
     ".github/workflows/checks.yml": "5b0c48c118a4bd18f4adae2c515f71f74ec05bbe0b577109f12955a73dbe2761",
@@ -20,7 +20,7 @@
     "lib/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "lib/ai.py": "0757356aa70d233a12ee5380da37c27b54434eeddb43edd1e025420fbd499fc4",
     "lib/base.py": "6ae725e73e77144c407e63bdd060593eeb2fba9c128ec0b6ec1b172fe21daf58",
-    "lib/common.py": "a3ff7a51bd9fa50e7c84c9a6d1d6b25207257cfbf9b7d4459fe4ddd3fd553aab",
+    "lib/common.py": "9bb106c472d3bb83d2ca1aaa4ed6405151539a4d406a20dfc8780d162b3ef978",
     "lib/config.py": "0da7cb1baf98dcea5d53e01715f3782fb4cf5b5ba9c751993ac647ac5e1591dd",
     "lib/features.py": "6381806385074cafb58e0e0b77935543f81d6ee4f76e5c60925f0ee4bbd3d2c4",
     "lib/firewall.py": "4e4ca8643ca79df826ed916d4ebd6b6d0603dadfb6a8a839527308c68f9e23ec",
@@ -28,8 +28,8 @@
     "lib/mail.py": "162af77ce19c756557fea02bcd175da8355fc8e299bb28abaf316beed1c97a4f",
     "lib/migrate.py": "6590433939b47d8829a2c4b5c8812dac03b61752ca151f9ee906c02c77ba05de",
     "lib/offsite.py": "5f752a0003a034cc31aec3f7e10f97e542d8856e44ce9f3aefaccd9225766757",
-    "lib/operations.py": "f2547b076936edc3569b10084a50f342927142627bd570d3c2c8b827867cf3ae",
-    "lib/pbx.py": "75bb75d1caf6ecf32f63fcd58bf0c2e81019cd3f725790288ab35d68b1497e87",
+    "lib/operations.py": "28967ec267c33dd65ca8c79e1ddd45c0054c562a8e1f4e6c4a83a78cbff31fd7",
+    "lib/pbx.py": "7c88235d4ffecc24b47ed1c0661dd29a931c668073f4e46e36af77ebddeda78f",
     "lib/recovery.py": "0b6baabcda406d33ca0bb8c93aed44e3cfc8ffe43263a4233b199a8eba3449a0",
     "lib/services.py": "6149bcac5bfbeb6c2e0fc4960235df8ca7a301fba12466a2de3c848363230aee",
     "lib/updates.py": "4d151f73cbf9875b1f100ddab5c1237fc52dd0fd4f88c71a8fb10e2707f7d7f0",
@@ -37,15 +37,15 @@
     "migrate-new-pbx.sh": "bd348638b621b27bfe1e5ada1a9b8457ca85b04140b9243d160ebc786167b116",
     "pbxctl.py": "b298c5443f661e5f87e15b25a2731bff084e7efcda63702749a84acd7ae2fbec",
     "prepare-old-pbx.sh": "dfbce14254c4fd4a22b0fd6bd846ad7be52dbefab8b282c552b290a69bf21235",
-    "README.md": "ba8fe45e4554a753180dfc5354d5c393d4f2bd64aee0e3e6bc0b7d595c67c013",
+    "README.md": "b92febd9f61e5e9a669a7b4b57a4504086648cb1e756c895272a252602e3cbd8",
     "site.example.json": "a82e5fc95c30f65bc0d26997852b1bac2de7cab75391ba48f2ccabc422201a2b",
     "tests/test_adapter.php": "37bf694b54497ebd41e7f6a56d34f30cde49edadf539481ff9ba1779cfc52e25",
     "tests/test_adapter_http.py": "b13b34513e4f16bbd34292d7b439f897ad143f6fca57cc3f345683b4fc35c65b",
     "tests/test_features.py": "c6a538731add851518e5a0a0a8d59fc7788abe33ddf624f158253202dae608e0",
-    "tests/test_postgres.py": "c9af7c3d86a3f952187209e64bcd8c4228c44a320ea96d017e4939ccfb845a8a",
+    "tests/test_postgres.py": "176bb3098732b128bf545416381cdd02a613c675635de2e92d9d7090bdc4b3f3",
     "tests/test_summary.php": "27ef4e88423de1b105e2868420556762918a03bb52d256b8712142b866a00802",
-    "tests/test_toolkit.py": "638d76975aa1cc0637d764639c8c5d5a7af9d7765c8741e6cbd5dda84d5c116a",
+    "tests/test_toolkit.py": "f7d09cce778678097f67d227e770ee86e39338025619e3009497019c4d2261aa",
     "tools/package.py": "d95dc588ea1467f675e45aad15e1f86476441ca36d6e409b5a169940b3922628",
-    "VERSION": "d915cc95d6ca8f47ae297713ed46d4e5c5d99ddd29fc3c61e263bdf305f2b5b0"
+    "VERSION": "79e3f22ca37c7fdf4c29ae3648d6b008c3cb6547260a453409275470919dc674"
   }
 }

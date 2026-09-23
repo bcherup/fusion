@@ -9,6 +9,9 @@ from .config import MODULES, module_config, selected, validate_all
 from . import base, mail, pbx, recovery, services
 from . import features
 
+# Reapply changed module defaults when explicitly selected after a tool upgrade.
+MODULE_REVISIONS={'hardening':2}
+
 MODULE_UNITS={
     'backup':['pbxctl-backup.service'],
     'tls':['certbot.timer'],
@@ -103,7 +106,8 @@ def configure(c,modules,allow_restart=False):
                 from .config import read_secret
                 desired={**desired,'credential_digest':hashlib.sha256(read_secret(c['smtp']['password_file']).encode()).hexdigest()}
             previous=check_managed(marker,db) if marker.exists() else None
-            if previous and previous.get('desired')==desired:
+            revision=MODULE_REVISIONS.get(m,1)
+            if previous and previous.get('desired')==desired and previous.get('revision',1)==revision:
                 results.append({'module':m,'status':'unchanged'});continue
             ch=Change(db,m)
             atomic(ch.path/'runtime.json',json.dumps(capture_runtime(m)))
@@ -128,7 +132,7 @@ def configure(c,modules,allow_restart=False):
                     # Verify repository access before enabling unattended uploads.
                 enabled=c['transcription_enabled'] if m=='transcription' else c[features.KEYS[m]]['enabled'] if m in features.KEYS else True
                 save_managed(ch,previous)
-                atomic(marker,json.dumps({'module':m,'desired':desired,'backup':str(ch.path),'enabled':enabled},indent=2))
+                atomic(marker,json.dumps({'module':m,'revision':revision,'desired':desired,'backup':str(ch.path),'enabled':enabled},indent=2))
                 results.append({'module':m,'status':'configured','rollback':str(ch.path),**extra})
                 completed.append((ch,marker,before_marker))
             except BaseException:
@@ -161,10 +165,13 @@ def configure(c,modules,allow_restart=False):
             if before_marker is None:marker.unlink(missing_ok=True)
             else:atomic(marker,before_marker)
         run(['systemctl','daemon-reload'],check=False)
-        if completed and any(m in modules for m in ('secure-calling','carrier-tls','call-volume')):
-            invalidate(c,['configuration:sofia.conf','dialplan:'+c['domain']])
-            for profile in profiles:
-                idle();run(['fs_cli','-x','sofia profile '+profile+' restart reloadxml'],check=False)
+        if completed and any(m in modules for m in ('audio','hardening','secure-calling','carrier-tls','call-volume')):
+            invalidate(c,['configuration:sofia.conf','configuration:acl.conf','dialplan:'+c['domain']])
+            if restart:
+                idle();run(['systemctl','restart','freeswitch'],timeout=120)
+            else:
+                for profile in profiles:
+                    idle();run(['fs_cli','-x','sofia profile '+profile+' restart reloadxml'],check=False)
         if 'hardening' in modules:run(['fail2ban-client','reload'],check=False)
         raise
 

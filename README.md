@@ -64,7 +64,7 @@ pbxctl configure --modules backup,audio --apply --allow-restart
 |---|---|
 | `backup` | Private daily database/configuration/media/runtime recovery sets |
 | `tls` | Deploy an existing trusted certificate and renewal hook |
-| `hardening` | Authenticated SIP, NAT hostname, TLS profile, exact carrier ACL, failed-auth jail |
+| `hardening` | Authenticated SIP, mobile NAT detection, NAT hostname, TLS profile, exact carrier ACL, failed-auth jail |
 | `audio` | Opus → G.722 → G.711 on the internal profile |
 | `secure-calling` | Offer or require SRTP on calls to selected phones/groups |
 | `carrier-tls` | TLS signaling and required outbound SRTP on one credential-registration trunk |
@@ -79,6 +79,20 @@ pbxctl configure --modules backup,audio --apply --allow-restart
 Repeated unchanged module configuration is skipped. Later edits to managed files/database fields stop reconfiguration for review. Unselected module settings must not change implicitly. Credentials, devices, ring groups, and incoming routing are not automatically recreated. On an installed host, `pbxctl setup` saves a candidate at `/root/pbxctl-site.json`; apply its selected changes with `pbxctl configure --config /root/pbxctl-site.json --modules ... --apply`. Setup does not overwrite the active site file.
 
 For a new certificate, `certificate --apply --agree-acme-tos` supports Cloudflare DNS validation using the configured private credentials file. Other DNS providers can obtain a certificate with Certbot separately; `tls` uses the existing lineage under `/etc/letsencrypt/live/DOMAIN`. Apply `tls` before `hardening`. Configure carrier addresses and the external profile's provider ACL before hardening. Firewall application is a separate step.
+
+### Mobile and home NAT
+
+Version 0.3.1 enables `aggressive-nat-detection=true` on the internal phone profile. It detects a difference between a phone's advertised SIP address and its actual source, including mobile addresses such as `192.0.0.4` that the built-in private-address list can miss. This lets return requests, including hangups, use the observed connection. Phones on the same LAN with matching addresses still use their normal route. Authentication, TLS/SRTP policy and provider access restrictions remain enforced; no phone IP address is hardcoded.
+
+For an existing toolkit installation, install the new toolkit release, then explicitly apply the updated hardening module:
+
+```sh
+pbxctl configure --modules hardening --apply --allow-restart
+```
+
+The module revision makes this run apply the new default even when site settings have not changed; subsequent unchanged runs are skipped. The full hardening module still requires its certificate/provider-ACL prerequisites and an idle restart window. It clears the hostname-specific SIP configuration cache before activation and records the original settings for rollback. Upgrading toolkit files alone does not change the PBX.
+
+Use the same SIP hostname on cellular and Wi-Fi, with local DNS resolving it to the PBX's LAN address when at home. Router forwarding, public DNS and app push registration still need their own configuration. Test fresh incoming/outgoing calls, hold/resume, and remote-party hangup on both networks. Moving between networks during an active call and ringing while the app is closed require separate tests.
 
 ### Enable, disable, or adjust a feature
 

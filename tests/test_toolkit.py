@@ -1,5 +1,6 @@
 """Offline safety and behavior tests; never invoke live host mutations."""
 import copy
+from contextlib import ExitStack
 import importlib.util
 import json
 import os
@@ -13,6 +14,11 @@ from unittest.mock import Mock, patch
 sys.dont_write_bytecode=True
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from lib import common,config,firewall,mail,offsite,recovery,updates
+if os.name=='nt':
+    # These offline tests never perform Unix account lookups or service changes.
+    with patch.dict(sys.modules,{'grp':Mock(),'pwd':Mock()}):from lib import operations
+else:
+    from lib import operations
 import pbxctl
 
 def sample():return config.load_config(ROOT/'site.example.json')
@@ -173,6 +179,77 @@ class UpdateTests(unittest.TestCase):
             p=Path(tmp);(p/'VERSION').write_text('1');(p/'pbxctl.py').write_text('')
             (p/'MANIFEST.json').write_text(json.dumps({'sha256':{'../outside':'bad'}}))
             with self.assertRaises(common.Error):updates.validate_release(p)
+
+class NatUpgradeTests(unittest.TestCase):
+    def exercise(self,revision=None,module='hardening',fail_restart=False):
+        with tempfile.TemporaryDirectory() as tmp,ExitStack() as stack:
+            root=Path(tmp);state=root/'state';state.mkdir();backup=root/'change';backup.mkdir()
+            c=sample();c['provider_cidrs']=['192.0.2.10/32']
+            active=root/'active.json';active.write_text(json.dumps(c))
+            previous={'module':'hardening','desired':config.module_config(c,'hardening'),'backup':str(backup)}
+            if revision is not None:previous['revision']=revision
+            marker=state/'hardening.json';marker.write_text(json.dumps(previous));original=marker.read_bytes()
+            change=Mock(path=backup,actions=[])
+            for obj,name,value in [(operations.base,'supported',Mock()),(operations,'Database',Mock()),
+                    (operations.pbx,'domain',Mock()),(operations,'ROOT',ROOT),(operations,'CONFIG',active),
+                    (operations,'STATE',state),(operations,'Change',Mock(return_value=change)),
+                    (operations,'check_managed',Mock(return_value=previous)),(operations,'save_managed',Mock()),
+                    (operations,'idle',Mock()),(operations.services,'backup',Mock())]:
+                stack.enter_context(patch.object(obj,name,value))
+            hardening=stack.enter_context(patch.object(operations.pbx,'hardening'))
+            invalidate=stack.enter_context(patch.object(operations,'invalidate'))
+            rollback=stack.enter_context(patch.object(operations,'rollback_change'))
+            restarts=[]
+            def command(args,**kwargs):
+                if args==['systemctl','restart','freeswitch']:
+                    restarts.append(args)
+                    if fail_restart and len(restarts)==1:raise common.Error('Synthetic activation failure')
+                return ok()
+            stack.enter_context(patch.object(operations,'run',side_effect=command))
+            if fail_restart:
+                with self.assertRaises(common.Error):operations.configure(c,[module],True)
+                self.assertEqual(marker.read_bytes(),original)
+                self.assertEqual(json.loads(active.read_text()),c)
+                rollback.assert_called_once_with(change)
+                self.assertEqual(len(restarts),2)
+                self.assertEqual(invalidate.call_count,2)
+                return
+            result=operations.configure(c,[module],True)
+            if module!='hardening':
+                hardening.assert_not_called();self.assertEqual(marker.read_bytes(),original)
+            elif revision==operations.MODULE_REVISIONS['hardening']:
+                self.assertEqual(result[0]['status'],'unchanged');hardening.assert_not_called()
+                self.assertFalse(restarts)
+            else:
+                self.assertEqual(result[0]['status'],'configured');hardening.assert_called_once()
+                self.assertEqual(json.loads(marker.read_text())['revision'],operations.MODULE_REVISIONS['hardening'])
+                self.assertEqual(len(restarts),1)
+
+    def test_old_hardening_marker_gets_new_defaults(self):self.exercise()
+    def test_current_hardening_revision_is_unchanged(self):self.exercise(operations.MODULE_REVISIONS['hardening'])
+    def test_unselected_hardening_is_not_upgraded(self):self.exercise(module='backup')
+    def test_failed_activation_restores_and_reloads_prior_settings(self):self.exercise(fail_restart=True)
+
+    def test_hostname_specific_profile_cache_is_invalidated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mkstemp=tempfile.mkstemp;scripts=[]
+            def command(args,**kwargs):
+                if args==['fs_cli','-x','hostname']:return ok('pbx.example.test\n')
+                if args[2].startswith('lua '):
+                    scripts.append(Path(args[2][4:]).read_text());return ok('cache invalidated')
+                if args[2]=='reloadxml':return ok('+OK')
+                raise AssertionError(args)
+            with patch.object(common.tempfile,'mkstemp',side_effect=lambda **kw:mkstemp(prefix=kw['prefix'],suffix=kw['suffix'],dir=tmp)),patch.object(common,'run',side_effect=command):
+                common.invalidate(sample(),['configuration:sofia.conf','configuration:acl.conf','directory:1000@voip.example.com'])
+            self.assertIn('c.del("pbx.example.test:configuration:sofia.conf")',scripts[0])
+            self.assertIn('c.del("configuration:acl.conf")',scripts[0])
+            self.assertIn('c.del("directory:1000@voip.example.com")',scripts[0])
+            self.assertEqual(list(Path(tmp).iterdir()),[])
+
+    def test_missing_hostname_stops_cache_activation(self):
+        with patch.object(common,'run',return_value=ok('-ERR unavailable')) as command:
+            with self.assertRaises(common.Error):common.invalidate(sample(),['configuration:sofia.conf'])
+            command.assert_called_once()
 
 class CliTests(unittest.TestCase):
     def test_setup_refuses_active_config_overwrite(self):

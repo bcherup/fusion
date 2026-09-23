@@ -10,7 +10,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from lib.common import Database,run
 from lib.config import load_config
 from lib.recovery import scratch_restore
-from lib import common, features, operations
+from lib import common, features, operations, pbx
 
 def feature_lifecycle(db, temporary):
     domain='11111111-1111-4111-8111-111111111111'
@@ -78,6 +78,35 @@ def feature_lifecycle(db, temporary):
         assert not (Path(temporary)/'state/secure-calling.json').exists()
     print('PostgreSQL feature enable/reapply/disable/rollback and drift checks: passed')
 
+def nat_lifecycle(db,temporary):
+    c=load_config(Path(__file__).resolve().parents[1]/'site.example.json')
+    c['provider_cidrs']=['192.0.2.10/32']
+    internal=pbx.profile(db,c['internal_profile']);external=str(uuid.uuid4());acl=str(uuid.uuid4())
+    db.execute('''CREATE TABLE v_access_controls(access_control_uuid uuid PRIMARY KEY,access_control_name text,access_control_default text);
+        CREATE TABLE v_access_control_nodes(access_control_node_uuid uuid PRIMARY KEY,access_control_uuid uuid,node_type text,node_cidr text,node_domain text);
+        INSERT INTO v_access_controls VALUES ('''+common.literal(acl)+','+common.literal(c['provider_acl'])+''','deny');
+        INSERT INTO v_sip_profiles VALUES ('''+common.literal(external)+','+common.literal(c['external_profile'])+''');
+        INSERT INTO v_sip_profile_settings VALUES ('''+common.literal(str(uuid.uuid4()))+','+common.literal(external)+''','apply-inbound-acl','''+common.literal(c['provider_acl'])+''',true);
+    ''')
+    for existing in (False,True):
+        setting_id=str(uuid.uuid4())
+        if existing:
+            db.execute('INSERT INTO v_sip_profile_settings VALUES ('+common.literal(setting_id)+','+common.literal(internal)+",'aggressive-nat-detection','true',false)")
+        before=db.rows('SELECT * FROM v_sip_profile_settings ORDER BY sip_profile_setting_uuid')
+        with patch.object(common,'BACKUPS',Path(temporary)/'nat-changes'),patch.object(pbx,'run'),patch.object(Path,'is_file',return_value=True):
+            first=common.Change(db,'nat');first.file=Mock();pbx.hardening(db,c,first)
+            enabled=db.rows('SELECT * FROM v_sip_profile_settings ORDER BY sip_profile_setting_uuid')
+            nat=[r for r in enabled if r['sip_profile_setting_name']=='aggressive-nat-detection']
+            assert len(nat)==1 and nat[0]['sip_profile_uuid']==internal
+            assert nat[0]['sip_profile_setting_value']=='true' and nat[0]['sip_profile_setting_enabled'] is True
+            if existing:assert nat[0]['sip_profile_setting_uuid']==setting_id
+            assert [r for r in enabled if r['sip_profile_uuid']==external]==[r for r in before if r['sip_profile_uuid']==external]
+            again=common.Change(db,'nat-repeat');again.file=Mock();pbx.hardening(db,c,again)
+            assert db.rows('SELECT * FROM v_sip_profile_settings ORDER BY sip_profile_setting_uuid')==enabled
+            again.rollback();first.rollback()
+            assert db.rows('SELECT * FROM v_sip_profile_settings ORDER BY sip_profile_setting_uuid')==before
+    print('PostgreSQL NAT defaults: fresh/disabled setting, reapply, carrier isolation and rollback passed')
+
 if os.environ.get('PBXCTL_INTEGRATION')!='1':raise SystemExit('Set PBXCTL_INTEGRATION=1 only in an isolated test environment')
 name='pbxctl_test_'+uuid.uuid4().hex[:12];created=False
 try:
@@ -87,6 +116,7 @@ try:
         db.dump(Path(temp)/'database.dump')
         scratch_restore(temp,load_config(Path(__file__).resolve().parents[1]/'site.example.json'))
         feature_lifecycle(db,temp)
+        nat_lifecycle(db,temp)
     print('PostgreSQL custom dump and isolated scratch restore: passed')
 finally:
     if created:run(['runuser','-u','postgres','--','dropdb','--force',name])

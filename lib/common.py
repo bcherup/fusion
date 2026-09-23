@@ -256,6 +256,11 @@ def idle():
          'Active calls; restart/configuration change deferred')
 
 def invalidate(config, keys):
+    keys=list(dict.fromkeys(keys))
+    if 'configuration:sofia.conf' in keys:
+        host=run(['fs_cli','-x','hostname']).stdout.strip()
+        need(re.fullmatch(r'[A-Za-z0-9_.-]+',host),'FreeSWITCH hostname unavailable for SIP profile cache')
+        keys.append(host+':configuration:sofia.conf')
     fd,path = tempfile.mkstemp(prefix='pbxctl-', suffix='.lua', dir='/run')
     try:
         with os.fdopen(fd,'w') as f:
