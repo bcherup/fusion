@@ -39,7 +39,7 @@ class ConsoleTests(unittest.TestCase):
         return console.Console(ui,runner or Mock(return_value=self.report),SOURCE,config=self.path)
 
     def test_navigation_returns_to_menu_and_only_scans(self):
-        ui=FakeUI(['audio','view',None,'overview','findings','refresh','exit']);runner=Mock(return_value=self.report)
+        ui=FakeUI(['advanced','audio','view',None,None,'overview','advanced','findings',None,'refresh','exit']);runner=Mock(return_value=self.report)
         self.app(ui,runner).run()
         self.assertEqual(len(runner.call_args_list),2)
         self.assertTrue(all(c.args[0][0]=='status' and '--apply' not in c.args[0] for c in runner.call_args_list))
@@ -118,6 +118,31 @@ class ConsoleTests(unittest.TestCase):
         self.assertEqual(runner.call_args.args[0][-2:],['--modules','hold-music,ai-summary'])
         self.assertNotIn('--apply',runner.call_args.args[0])
 
+    def test_simple_music_change_shows_current_and_applies_one_review_without_site(self):
+        current={'stream':'voip.example.com/Office','gain_db':-8,'recorded':True,'label':'-8 dB from preserved tracks','scope':'Office music'}
+        preview={'before':current['label'],'after':'-9 dB from preserved tracks','scope':'Office music','baseline_note':'','token':'review-token'}
+        ui=FakeUI(['down',None],confirmations=[True])
+        runner=Mock(side_effect=[current,preview,{'current':preview['after'],'scope':'Office music'},self.report,{**current,'gain_db':-9,'label':preview['after']}])
+        app=console.Console(ui,runner,SOURCE);app.report=self.report
+        with patch.object(app,'edit',side_effect=AssertionError('Should not open a configuration editor')):app.simple_volume('hold-music')
+        apply=runner.call_args_list[2].args[0]
+        self.assertEqual(apply[-5:],['--gain-db','-9','--confirm','review-token','--apply'])
+        self.assertNotIn('--config',apply);self.assertTrue(any(p[0]=='Volume updated' for p in ui.pages))
+
+    def test_simple_music_cancel_only_reads_and_previews(self):
+        current={'stream':'Office','gain_db':None,'recorded':False,'label':'Existing track level','scope':'Office music'}
+        preview={'before':current['label'],'after':'-1 dB','scope':'Office music','baseline_note':'Preserve tracks','token':'review-token'}
+        runner=Mock(side_effect=[current,preview,current]);ui=FakeUI(['down',None],confirmations=[False])
+        self.app(ui,runner).simple_volume('hold-music')
+        self.assertEqual(runner.call_count,3);self.assertFalse(any('--apply' in c.args[0] for c in runner.call_args_list))
+
+    def test_simple_phone_listening_change_preserves_microphone_level(self):
+        current={'read_level':-2,'write_level':0,'recorded':True,'label':'Microphone -2 / listening +0 steps','scope':'Phones 1000, 1001'}
+        preview={'before':current['label'],'after':'Microphone -2 / listening -1 steps','scope':current['scope'],'baseline_note':'','token':'review-token'}
+        runner=Mock(side_effect=[current,preview,current]);ui=FakeUI(['listen-down',None],confirmations=[False])
+        self.app(ui,runner).simple_volume('call-volume')
+        self.assertEqual(runner.call_args_list[1].args[0][-4:],['--read-level','-2','--write-level','-1'])
+
     @unittest.skipUnless(os.name=='posix','Requires a Unix pseudo-terminal')
     def test_real_curses_arrow_navigation_and_terminal_restore(self):
         import fcntl
@@ -151,8 +176,10 @@ print('CONSOLE_EXIT_OK',flush=True)
             self.assertIn(needle,data,bytes(data[-2000:]))
         until(b'Main menu')
         # Arrow keys in xterm application-cursor mode, then Enter.
-        os.write(master,b'\x1bOB\x1bOB\r');until(b'Audio and hold music')
+        os.write(master,b'\x1bOB'*5+b'\r');until(b'Detailed audio settings')
+        os.write(master,b'\r');until(b'Audio and hold music')
         os.write(master,b'\r');until(b'Evidence:')
+        os.write(master,b'q');time.sleep(.15)
         os.write(master,b'q');time.sleep(.15)
         os.write(master,b'q');time.sleep(.15)
         os.write(master,b'q');until(b'CONSOLE_EXIT_OK')

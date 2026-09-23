@@ -14,7 +14,7 @@ SOURCE=Path(__file__).resolve().parent
 
 def parser():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action',nargs='?',default='menu',choices=['menu','setup','plan','install','deploy','configure','feature','certificate','smtp-credential','test-email','backup','verify-backup','restore','activate','migrate','check','check-media','status','doctor','firewall','update','offsite-init','offsite-upload','offsite-restore','retention','rollback','restore-summary-text'])
+    p.add_argument('action',nargs='?',default='menu',choices=['menu','setup','plan','install','deploy','configure','feature','certificate','smtp-credential','test-email','backup','verify-backup','restore','activate','migrate','check','check-media','status','doctor','volume','firewall','update','offsite-init','offsite-upload','offsite-restore','retention','rollback','restore-summary-text'])
     p.add_argument('--config',help='Site configuration; setup saves a candidate before configure applies it')
     p.add_argument('--modules',help='Comma-separated optional modules: '+','.join(MODULES))
     p.add_argument('--apply',action='store_true',help='Perform the displayed action; otherwise show a plan')
@@ -28,7 +28,8 @@ def parser():
     p.add_argument('--gain-db',type=float);p.add_argument('--read-level',type=int);p.add_argument('--write-level',type=int)
     p.add_argument('--format',choices=['text','json','html'],default='text',help='Status/doctor report format')
     p.add_argument('--domain',help='Existing SIP domain to scan; discovered automatically when unique')
-    p.add_argument('--database',help='Database name for status/doctor discovery')
+    p.add_argument('--database',help='Database name for status/doctor/volume discovery')
+    p.add_argument('--stream',help='Detected music stream for volume controls')
     return p
 
 def print_result(result):
@@ -55,6 +56,11 @@ def media(uuid):
 def main(argv=None):
     a=parser().parse_args(argv)
     if a.action=='menu':return menu(a.config,a.domain,a.database)
+    if a.action=='volume':
+        from lib.quick_volume import execute
+        if a.config:
+            c=load_config(a.config);a.domain=a.domain or c['domain'];a.database=a.database or c['database']
+        return execute(a)
     if a.action in ('status','doctor'):
         need(not a.apply,'Status and doctor are read-only; omit --apply')
         from lib import base, diagnostics

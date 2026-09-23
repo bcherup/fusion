@@ -343,6 +343,87 @@ class Console:
     def feature(self, name):
         if self.edit(name):self.perform('configure',['--modules',name],restart=name in ('carrier-tls',))
 
+    def volume_args(self, name):
+        args=['volume','--name',name]
+        domain=self.domain or (self.report or {}).get('domain')
+        database=self.database
+        if not database and self.config and self.config.is_file():database=load_config(self.config)['database']
+        if domain:args+=['--domain',domain]
+        if database:args+=['--database',database]
+        return args
+
+    def simple_volume(self, name):
+        """Current level -> change -> one confirmation. No site draft or deployment wizard."""
+        args=self.volume_args(name);music=name=='hold-music'
+        title='Hold-music volume' if music else 'Phone volume'
+        while True:
+            self.ui.busy('Reading current volume')
+            state=self.runner(args)
+            if state.get('selection_required'):
+                choices=state['choices']
+                if not choices:self.ui.view(title,'No supported music folder was found. Advanced > Audio settings has the detailed inventory.');return
+                selected=self.ui.select('Choose music',[(x['stream'],x['stream'].split('/')[-1].replace('_',' ')+(' (in use)' if x['in_use'] else ''),'Adjust this music collection; every phone using these tracks is affected.') for x in choices])
+                if selected is None:return
+                args+=['--stream',selected];continue
+            if music and '--stream' not in args:args+=['--stream',state['stream']]
+            note='Current: '+state['label']+'\n'+state['scope']
+            if music and not state['recorded']:note+='\nYour current tracks will be saved before the first change.'
+            options=[('down','A little quieter (-1 dB)','Reduce the current music adjustment by 1 dB.'),('down3','Noticeably quieter (-3 dB)','Reduce the current music adjustment by 3 dB.'),('up','A little louder (+1 dB)','Increase by 1 dB; settings that would distort are refused.'),('set','Set a specific level','Enter an adjustment in dB relative to the preserved tracks.')] if music else [
+                ('listen-down','Lower listening volume','Reduce PBX-to-phone audio by one step.'),('listen-up','Raise listening volume','Increase PBX-to-phone audio by one step.'),
+                ('mic-down','Lower microphone volume','Reduce phone-to-PBX audio by one step.'),('mic-up','Raise microphone volume','Increase phone-to-PBX audio by one step.'),('set','Set microphone and listening levels','Choose -4 to +4 steps; zero is unchanged.')]
+            if state['recorded']:options.append(('restore','Restore original level','Music: restore the exact preserved tracks. Phones: disable the toolkit gain adjustment.'))
+            key=self.ui.select(title+' | '+state['label'],options,note)
+            if key is None:return
+            changes=[]
+            try:
+                if key=='restore':changes=['--disable']
+                elif music:
+                    current=state['gain_db'] if state['gain_db'] is not None else 0
+                    if key=='set':
+                        value=self.ui.prompt('Music level in dB',current,'Negative is quieter. This adjustment is relative to the preserved tracks, or to your current tracks on the first change.')
+                        if value is None:continue
+                        value=float(value)
+                    else:value=current+{'down':-1,'down3':-3,'up':1}[key]
+                    changes=['--gain-db',str(value)]
+                else:
+                    read,write=state['read_level'],state['write_level']
+                    if key=='set':
+                        value=self.ui.prompt('Microphone level',read,'-4 to +4 steps. This changes phone-to-PBX audio; zero is unchanged.')
+                        if value is None:continue
+                        read=int(value)
+                        value=self.ui.prompt('Listening level',write,'-4 to +4 steps. This changes PBX-to-phone audio; zero is unchanged.')
+                        if value is None:continue
+                        write=int(value)
+                    elif key=='listen-down':write-=1
+                    elif key=='listen-up':write+=1
+                    elif key=='mic-down':read-=1
+                    elif key=='mic-up':read+=1
+                    changes=['--read-level',str(read),'--write-level',str(write)]
+                self.ui.busy('Checking volume change')
+                preview=self.runner(args+changes)
+                text='Current: '+preview['before']+'\nNew: '+preview['after']+'\nApplies to: '+preview['scope']
+                if preview['baseline_note']:text+='\n'+preview['baseline_note']
+                if not self.ui.confirm('Change volume?',text):continue
+                self.ui.busy('Applying volume change')
+                result=self.runner(args+changes+['--confirm',preview['token'],'--apply'])
+                self.ui.view('Volume updated',result['current']+'\n\n'+result['scope']+'\n\nNo service restart was needed. Try a new call to listen.')
+                self.refresh()
+            except (Error,ValueError) as e:self.ui.view('Volume needs attention',str(e) if isinstance(e,Error) else 'Enter a numeric volume within the displayed range.')
+
+    def advanced(self):
+        items=[('audio','Detailed audio settings','Codec settings, music paths and exact volume scope.'),('security','Security and connectivity','TLS, SRTP, carrier routing and firewall.'),
+               ('maintenance','Updates and maintenance','Update the application or toolkit, inspect health, or roll back.'),('setup','Install and site configuration','Site files, deployment and module selection.'),
+               ('findings','Detailed recommendations','All findings with their evidence and suggested next steps.'),('export','Export a report','HTML, text or structured JSON.'),('domain','Choose domain','Inspect another existing SIP domain.')]
+        while True:
+            key=self.ui.select('Advanced',items,'Everyday volume controls are on the main menu.')
+            if key is None:return
+            if key=='findings':self.findings()
+            elif key=='export':need('result' in self.report,'Refresh the scan before exporting');self.export()
+            elif key=='domain':
+                domain=self.ui.prompt('SIP domain',self.report.get('domain') or '','Enter an existing domain, or clear to discover a single domain automatically.')
+                if domain is not None:self.domain=domain or None;self.refresh()
+            else:self.submenu(key)
+
     def modules(self):
         chosen=set()
         while True:
@@ -427,18 +508,18 @@ class Console:
     def run(self):
         try:self.refresh()
         except (Error,OSError,ValueError):self.ui.view('Scan unavailable','The scan could not start. Select a valid site/domain or use install and configure.');self.report={'counts':{},'findings':[],'sections':[],'domain':None,'scanned_at':'Not scanned'}
-        choices=[('overview','System overview','Key settings, service state and verification limits.'),('findings','Recommendations','Review findings and specific next steps.'),('audio','Audio and hold music','Inspect codecs and music; adjust music and phone gain.'),('security','Security and connectivity','TLS, SRTP, NAT, carrier configuration and firewall.'),('voicemail','Voicemail and email','Local transcription, summaries, SMTP and email alerts.'),('backups','Backups and recovery','Create, verify, schedule and restore recovery sets.'),('maintenance','Updates and maintenance','Review updates, update the PBX or toolkit, and inspect health.'),('setup','Install and configure','Guided site settings, module selection and deployment.'),('export','Export this report','Save a private HTML, text or JSON snapshot.'),('refresh','Refresh live scan','Read the server again without changing its configuration.'),('domain','Choose scan domain','Select another SIP domain when the server hosts several.'),('exit','Exit console','Return to your SSH shell.')]
+        choices=[('overview','System status','A quick overview of your phones, services and settings.'),('music','Hold-music volume','See the current level, make it quieter or louder, or restore it.'),('phone','Phone volume','See microphone and listening gain, then adjust directly.'),
+                 ('voicemail','Voicemail and email','Transcription, local summaries and email delivery.'),('backups','Backups and recovery','Create or verify a backup; recovery and scheduling options.'),
+                 ('advanced','Advanced settings','Detailed reports, security, updates, setup and configuration files.'),('refresh','Refresh status','Scan the server again.'),('exit','Exit','Return to the SSH shell.')]
         while True:
             key=self.ui.select('Main menu',choices,'Inspecting settings is read-only. Changes are reviewed before applying.')
             if key in (None,'exit'):return
             try:
                 if key=='overview':self.ui.view('System overview','\n\n'.join(k+': '+v for k,v in overview(self.report))+'\n\nVERIFICATION LIMITS\n'+'\n'.join(self.report.get('limitations',[])))
-                elif key=='findings':self.findings()
+                elif key=='music':self.simple_volume('hold-music')
+                elif key=='phone':self.simple_volume('call-volume')
+                elif key=='advanced':self.advanced()
                 elif key=='refresh':self.refresh()
-                elif key=='export':need('result' in self.report,'Refresh the scan before exporting');self.export()
-                elif key=='domain':
-                    domain=self.ui.prompt('SIP domain',self.report.get('domain') or '','Enter an existing PBX domain. Clear this field to discover a single domain automatically.')
-                    if domain is not None:self.domain=domain or None;self.refresh()
                 else:self.submenu(key)
             except (Error,OSError,ValueError,KeyError) as e:self.ui.view('Operation needs attention',str(e) if isinstance(e,Error) else 'Check the selected values and local prerequisites; then refresh the scan.')
 

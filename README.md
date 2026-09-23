@@ -14,11 +14,17 @@ python3 pbxctl.py
 
 The console scans the server on entry, then stays open between operations. Use **Up/Down and Enter** to select, **Esc or Q** to return, and **Page Up/Page Down** to scroll. Number keys move to the corresponding menu choice; Enter opens it. Resize the terminal to at least 60 columns and 18 rows; wider terminals show a second pane with descriptions. Only the standard Python curses module is required.
 
-The main menu has System overview, Recommendations, Audio and hold music, Security and connectivity, Voicemail and email, Backups and recovery, Updates and maintenance, Install and configure, Export, Refresh, and domain selection. Configuration editors show saved preferences, explain units and scope, and save a separate draft. Module selection uses checkboxes. Leaving an editor with Esc discards its unsaved edits.
+The main menu has **System status**, **Hold-music volume**, **Phone volume**, **Voicemail and email**, **Backups and recovery**, **Advanced settings**, **Refresh**, and **Exit**. Open a volume control to see the current adjustment, choose a change, and confirm it. Detailed audio/security settings, update tools, site configuration, reports, and domain selection are under Advanced.
+
+For example: **Hold-music volume → A little quieter → Apply**. Music offers 1 dB quieter/louder, 3 dB quieter, a specific level, and restoration of the exact preserved tracks. Phone volume offers separate microphone and listening controls, in steps rather than dB. These direct controls discover an existing PBX and do not require deployment or a site-configuration wizard. They show the affected music collection or phones before applying and need no service restart. Phone changes affect new calls.
+
+The first music change preserves the tracks as they exist at that moment. Earlier manual adjustments have no verified numeric baseline and are labeled accordingly. Later changes show the verified adjustment from those preserved tracks; gain never compounds across repeated applications. Only supported PCM16 WAV collections with matching database stream paths are eligible. One music folder can be managed at a time; manually changed tracks/settings require review. Phone controls initially select enabled numeric extensions and ring groups in the chosen domain; an existing managed scope is retained. Use Advanced for a narrower selection. Hardware volume and arbitrary custom audio scripts cannot be measured by these controls.
+
+Advanced configuration editors show saved preferences, explain units and scope, and save a separate draft. Module selection uses checkboxes. Leaving an editor with Esc discards its unsaved edits.
 
 Every PBX change has a review screen and an explicit Apply choice; Cancel is selected by default. Operations needing restarts also require an idle-maintenance acknowledgment. Selecting or editing a site file does not apply it. Reports are exported with private permissions and existing files are never overwritten. SMTP credentials use a private terminal prompt, not a report field. The console does not automatically fix findings.
 
-For an existing site, pass `--config /path/to/site.json`. Optional `--domain` and `--database` scope the scan; changes are refused if those overrides conflict with the selected site file. A fresh draft uses discovered domain/LAN values where available and requires trusted management networks to be entered explicitly. Before applying modules on an existing PBX, deploy the toolkit through Install and configure.
+For an existing site, pass `--config /path/to/site.json`. Optional `--domain` and `--database` select the inspected PBX. Advanced module changes are refused if those overrides conflict with the selected site file. Direct volume controls read the selected live database, preserve recovery records, and update only that volume preference in a matching active site file, if present. A fresh draft uses discovered domain/LAN values where available and requires trusted management networks to be entered explicitly. Before applying full modules on an existing PBX, deploy the toolkit through Advanced → Install and site configuration.
 
 For pipes or automation, use `status --format text` or `status --format json`; full-screen mode requires an interactive terminal. If terminal detection fails in a compatible SSH client, try `TERM=xterm-256color python3 pbxctl.py`.
 
@@ -32,6 +38,7 @@ For pipes or automation, use `status --format text` or `status --format json`; f
 | `deploy` | Install only this toolkit beside an existing PBX |
 | `configure` | Apply selected independent modules with scoped recovery records |
 | `feature` | Enable/disable one feature or adjust its volume settings |
+| `volume` | Discover current music/phone gain and preview a direct change without a site file; apply requires the returned confirmation token |
 | `restore-summary-text` | Restore unchanged generated voicemail notes to their saved original transcripts |
 | `backup` / `verify-backup` | Create a full private recovery set; check hashes and optionally perform an isolated PostgreSQL restore |
 | `migrate` / `restore` / `activate` | Transfer, stage, and deliberately activate a replacement PBX |
@@ -329,6 +336,9 @@ The check reports actual audio-security confirmation and negotiated cipher witho
 ```sh
 python3 -B tests/test_toolkit.py
 python3 -B tests/test_features.py
+python3 -B tests/test_diagnostics.py
+python3 -B tests/test_console.py
+python3 -B tests/test_quick_volume.py
 python3 -B tests/test_adapter_http.py
 php tests/test_summary.php
 python3 tools/package.py

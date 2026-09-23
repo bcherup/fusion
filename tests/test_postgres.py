@@ -131,6 +131,50 @@ def diagnostic_inventory(db,temporary):
         assert any(row['observed']=='smtp.example.com' for s in scanner.r['sections'] for row in s['rows'])
     print('PostgreSQL inventory projections and enforced read-only transactions: passed')
 
+def quick_phone_lifecycle(db,temporary):
+    from lib import quick_volume as quick
+    domain=db.one('SELECT domain_uuid FROM v_domains')['domain_uuid']
+    db.execute('INSERT INTO v_extensions VALUES ('+common.literal(domain)+",'1000',true,NULL),("+common.literal(domain)+",'1001',true,NULL); INSERT INTO v_ring_groups VALUES ("+common.literal(domain)+",'600','Office',NULL);")
+    directory=Path(temporary)/'quick';directory.mkdir()
+    state=directory/'state';active=directory/'site.json';helper=directory/'lib/call-volume.lua'
+    c=load_config(Path(__file__).resolve().parents[1]/'site.example.json');c['database']=db.name
+    common.atomic(active,json.dumps(c));original=active.read_bytes()
+    native=db.rows('SELECT * FROM v_dialplans ORDER BY dialplan_uuid')
+    with patch.object(quick,'CONFIG',active),patch.object(quick,'STATE',state),patch.object(common,'BACKUPS',directory/'backups'), \
+         patch.object(quick,'HELPER',helper),patch.object(quick,'invalidate') as refresh:
+        def volume():return quick.Volume(database=db.name,db=db)
+        first=volume();plan=first.plan('call-volume',write=-1)
+        first.apply(plan,plan['token'])
+        assert helper.read_bytes()==(quick.SOURCE/'assets/call-volume.lua').read_bytes()
+        assert volume().current('call-volume')['write_level']==-1
+        after=json.loads(active.read_bytes());expected={**c,'call_volume':plan['config']['call_volume']}
+        assert after==expected
+        rules=db.rows("SELECT dialplan_name,dialplan_xml FROM v_dialplans WHERE dialplan_description LIKE 'Managed by PBX Toolkit:%'")
+        assert len(rules)==2 and any(str(helper) in r['dialplan_xml'] for r in rules)
+        assert any('1000|1001|600' in r['dialplan_xml'] for r in rules)
+        for kwargs in ({'write':-2},{'restore':True}):
+            v=volume();p=v.plan('call-volume',**kwargs);v.apply(p,p['token'])
+        assert volume().current('call-volume')['write_level']==0
+        assert not db.rows("SELECT * FROM v_dialplans WHERE dialplan_enabled=true AND dialplan_description LIKE 'Managed by PBX Toolkit:%'")
+        # Activation failure must restore previous real rows, helper, state and preferences.
+        before_rows=db.rows('SELECT * FROM v_dialplans ORDER BY dialplan_uuid');before_site=active.read_bytes()
+        marker=(state/'call-volume.json').read_bytes()
+        refresh.side_effect=[common.Error('Synthetic activation failure'),None]
+        v=volume();p=v.plan('call-volume',read=-1)
+        try:v.apply(p,p['token'])
+        except common.Error:pass
+        else:raise AssertionError('Quick volume activation failure was ignored')
+        assert db.rows('SELECT * FROM v_dialplans ORDER BY dialplan_uuid')==before_rows
+        assert active.read_bytes()==before_site and (state/'call-volume.json').read_bytes()==marker
+        assert [r for r in db.rows('SELECT * FROM v_dialplans') if r['dialplan_name']=='Native route']==native
+        # Refuse a manual gain edit rather than reporting stale levels or overwriting it.
+        db.execute("UPDATE v_dialplan_details SET dialplan_detail_data='read 4' WHERE dialplan_detail_type='set_audio_level' AND dialplan_detail_data LIKE 'read %'")
+        try:volume().current('call-volume')
+        except common.Error:pass
+        else:raise AssertionError('Quick volume ignored changed dialplan details')
+    print('PostgreSQL direct phone volume: discovery, enable, adjust, disable, rollback, helper and drift checks passed')
+
+
 if os.environ.get('PBXCTL_INTEGRATION')!='1':raise SystemExit('Set PBXCTL_INTEGRATION=1 only in an isolated test environment')
 name='pbxctl_test_'+uuid.uuid4().hex[:12];created=False
 try:
@@ -142,6 +186,7 @@ try:
         feature_lifecycle(db,temp)
         nat_lifecycle(db,temp)
         diagnostic_inventory(db,temp)
+        quick_phone_lifecycle(db,temp)
     print('PostgreSQL custom dump and isolated scratch restore: passed')
 finally:
     if created:run(['runuser','-u','postgres','--','dropdb','--force',name])
