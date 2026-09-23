@@ -242,7 +242,7 @@ pbxctl configure --modules smtp,alerts --apply
 pbxctl test-email --apply
 ```
 
-Enter the provider SMTP password/app password at the hidden prompt. It is not passed in command arguments or printed. PBX SMTP settings are stored in its protected database; independent health alerts use the private file. Confirm the test email arrived. SMTP acceptance alone is not inbox delivery.
+Enter the provider SMTP password/app password at the hidden prompt. It is not passed in command arguments or printed. PBX SMTP settings are stored in its protected database; independent health alerts use the private file. The everyday email wizard writes a new private credential version, preserving the previous reference if configuration fails. Private versions are retained for recovery. Confirm the test email arrived. SMTP acceptance alone is not inbox delivery.
 
 Google Workspace with a dynamic IP can use `smtp.gmail.com:587` and an app password when permitted by the account's 2-Step Verification/admin policy. Providers requiring OAuth-only authentication need an OAuth-capable relay or a future authentication adapter; this release does not implement OAuth token flows. An ordinary Google/Microsoft sign-in password is not universally usable for SMTP.
 

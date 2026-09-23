@@ -71,6 +71,11 @@ class Daily:
         if restart:note+='\nRequires a brief restart; the backend first checks for zero active calls.'
         if password:note+='\nThe next prompt privately requests the SMTP password or app password.'
         if not self.ui.confirm('Apply these changes?',note):return False
+        if password:
+            # A failed configuration keeps the old site's credential intact.
+            # Retain private credential versions for rollback instead of overwriting one in use.
+            candidate=copy.deepcopy(candidate)
+            candidate['smtp']['password_file']='/etc/pbxctl/secrets/smtp-'+uuid.uuid4().hex
         path=self.save_candidate(candidate)
         try:
             if deploy:self.ui.busy('Preparing administration tools');self.runner(['deploy','--config',str(self.config),'--apply'])

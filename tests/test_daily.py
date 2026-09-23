@@ -151,6 +151,20 @@ class DailyTests(unittest.TestCase):
         before=self.site.read_bytes();app.email_setup()
         self.assertEqual(self.site.read_bytes(),before);self.assertFalse(daily.DRAFTS.exists());runner.assert_not_called();ui.external.assert_not_called()
 
+    def test_failed_email_apply_uses_new_private_credential_and_keeps_old_reference(self):
+        (daily.ROOT).mkdir();(daily.ROOT/'VERSION').write_text('fixture')
+        old=load_config(self.site);seen=[]
+        def run(args):
+            candidate=load_config(args[2]);seen.append(candidate['smtp']['password_file'])
+            if args[0]=='configure':raise Error('Synthetic apply failure')
+            return {'saved':True}
+        app=self.app(FakeUI(confirmations=[True]),Mock(side_effect=run))
+        with self.assertRaisesRegex(Error,'Synthetic apply failure'):app.apply_preferences(old,'smtp','New mail server',password=True)
+        self.assertEqual(len(set(seen)),1);self.assertNotEqual(seen[0],old['smtp']['password_file'])
+        self.assertTrue(seen[0].startswith('/etc/pbxctl/secrets/smtp-'))
+        self.assertEqual(load_config(self.site)['smtp']['password_file'],old['smtp']['password_file'])
+        self.assertFalse(list(daily.DRAFTS.glob('settings-*.json')))
+
     def test_update_prepares_validation_helper_before_stopping_services(self):
         runner=Mock(side_effect=[{'repositories':[]},{'deployed':True},{'status':'updated'},self.report])
         app=self.app(FakeUI(confirmations=[True]),runner)
