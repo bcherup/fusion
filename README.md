@@ -1,8 +1,26 @@
 # PBX Toolkit
 
-A neutral command-line installer and configurator for **Debian 13 Trixie**, FusionPBX, and FreeSWITCH. Run `python3 pbxctl.py` for the menu, or use explicit commands for repeatable administration.
+A neutral installer and configurator for **Debian 13 Trixie**, FusionPBX, and FreeSWITCH. Run `python3 pbxctl.py` in an interactive SSH terminal for the full-screen console, or use explicit commands for repeatable administration.
 
-This is a **review release**. Offline safety/behavior and adapter HTTP tests are included, along with Debian/PostgreSQL CI. A complete new-VM installation, real carrier call testing, real SMTP delivery, remote storage, and a replacement-server recovery drill remain required before treating every path as production-proven. The toolkit has not been applied to an existing live PBX during development.
+This is a **review release**. Offline safety/behavior and adapter HTTP tests are included, along with Debian/PostgreSQL CI. The read-only scanner has been exercised on an existing Debian 13 PBX. Full toolkit configuration, a complete new-VM installation, real carrier call testing, SMTP delivery, remote storage, and a replacement-server recovery drill remain required before treating every path as production-proven.
+
+## Interactive console
+
+Run as root in an SSH terminal:
+
+```sh
+python3 pbxctl.py
+```
+
+The console scans the server on entry, then stays open between operations. Use **Up/Down and Enter** to select, **Esc or Q** to return, and **Page Up/Page Down** to scroll. Number keys move to the corresponding menu choice; Enter opens it. Resize the terminal to at least 60 columns and 18 rows; wider terminals show a second pane with descriptions. Only the standard Python curses module is required.
+
+The main menu has System overview, Recommendations, Audio and hold music, Security and connectivity, Voicemail and email, Backups and recovery, Updates and maintenance, Install and configure, Export, Refresh, and domain selection. Configuration editors show saved preferences, explain units and scope, and save a separate draft. Module selection uses checkboxes. Leaving an editor with Esc discards its unsaved edits.
+
+Every PBX change has a review screen and an explicit Apply choice; Cancel is selected by default. Operations needing restarts also require an idle-maintenance acknowledgment. Selecting or editing a site file does not apply it. Reports are exported with private permissions and existing files are never overwritten. SMTP credentials use a private terminal prompt, not a report field. The console does not automatically fix findings.
+
+For an existing site, pass `--config /path/to/site.json`. Optional `--domain` and `--database` scope the scan; changes are refused if those overrides conflict with the selected site file. A fresh draft uses discovered domain/LAN values where available and requires trusted management networks to be entered explicitly. Before applying modules on an existing PBX, deploy the toolkit through Install and configure.
+
+For pipes or automation, use `status --format text` or `status --format json`; full-screen mode requires an interactive terminal. If terminal detection fails in a compatible SSH client, try `TERM=xterm-256color python3 pbxctl.py`.
 
 ## Operations
 
@@ -18,6 +36,7 @@ This is a **review release**. Offline safety/behavior and adapter HTTP tests are
 | `backup` / `verify-backup` | Create a full private recovery set; check hashes and optionally perform an isolated PostgreSQL restore |
 | `migrate` / `restore` / `activate` | Transfer, stage, and deliberately activate a replacement PBX |
 | `check` / `check-media` | Inspect local health or one active call's SRTP confirmation |
+| `status` / `doctor` | Read-only live inventory, recommendations and text/JSON/HTML reports |
 | `firewall` | Apply/confirm an ingress policy with a ten-minute rollback timer |
 | `update --target pbx` | Review or perform fast-forward application updates on existing tracking branches |
 | `update --target tool` | Verify/install a separately downloaded toolkit release |
@@ -52,6 +71,28 @@ python3 pbxctl.py deploy --config site.json --apply
 ```
 
 Installed code is `/opt/pbxctl`; configuration is `/etc/pbxctl/site.json`. Deployment does not rotate phone credentials or create extensions/ring groups. After base installation, create/test your domain, mailbox, carrier gateway, and provider ACL in the PBX as appropriate. Modules validate the objects they require.
+
+## Inspect an existing server
+
+Run as root on Debian 13. These commands work from the downloaded source before deployment; an existing toolkit site file is optional. With one PBX domain it is discovered automatically; with several, select `--domain`.
+
+```sh
+python3 pbxctl.py status
+python3 pbxctl.py doctor --domain voip.example.com
+python3 pbxctl.py status --format json
+umask 077
+python3 pbxctl.py doctor --domain voip.example.com --format html > /root/pbx-report.html
+```
+
+`status` and `doctor` run the same checks, with recommendations included in both. The menu includes both. Installed copies can use `pbxctl` instead of `python3 pbxctl.py`. `--config PATH` compares selected saved preferences; otherwise only `/etc/pbxctl/site.json` is considered, never the example configuration. `--database NAME` selects a nonstandard database.
+
+The report includes services and legacy feature units, active-call count, disk space, stored and runtime SIP profiles/codecs, NAT and authentication settings, TLS listeners/certificate expiry, carrier registration, extensions/ring groups and their music selections, conditional call-gain/SRTP rules, voicemail/transcription and non-secret SMTP settings, toolkit feature records, backup recency, firewall/listener summaries, and local Git update readiness. Findings include their evidence and a suggested next step. Failed or unsupported checks are marked incomplete while other sections continue.
+
+Phone gain uses **steps**, with read = microphone/phone to PBX and write = listening/PBX to phone. Music gain uses **dB relative to preserved originals**. A recorded music gain is accompanied by a hash check of current WAV files; replaced, edited or removed tracks invalidate that evidence. Existing manually adjusted music without a toolkit baseline is reported as **unknown**, never assumed to be 0 dB. Hardware volume and arbitrary custom scripts cannot be inferred.
+
+The scanner does not change settings, reload/restart services, fetch Git refs, place calls, send mail, query a remote backup store or write a PBX lock file. Database queries use enforced read-only transactions. SIP passwords, SMTP credentials, message content and raw channel/SDP dumps are excluded. Reports still contain hostnames, addresses and extensions: store them privately and review before sharing. HTML is standalone, with no external assets or scripts.
+
+This is a configuration snapshot, not a blanket security or recovery certification. Optional SRTP can fall back to clear audio; use `check-media --uuid CALL_LEG_UUID` during real phone and carrier calls to confirm each leg. Router rules, mobile push/handover, SMTP delivery, nested application repositories, full firewall packet paths and a replacement-server restore still need their own tests. A completed scan exits zero even when findings exist; automation should inspect the JSON `counts` and `result` fields.
 
 ## Choose features
 

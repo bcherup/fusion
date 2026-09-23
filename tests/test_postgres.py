@@ -107,6 +107,30 @@ def nat_lifecycle(db,temporary):
             assert db.rows('SELECT * FROM v_sip_profile_settings ORDER BY sip_profile_setting_uuid')==before
     print('PostgreSQL NAT defaults: fresh/disabled setting, reapply, carrier isolation and rollback passed')
 
+def diagnostic_inventory(db,temporary):
+    from lib import diagnostics
+    from test_diagnostics import fixture_probe
+    db.execute('''CREATE TABLE v_extensions(domain_uuid uuid,extension text,enabled boolean,hold_music text);
+        CREATE TABLE v_ring_groups(domain_uuid uuid,ring_group_extension text,ring_group_name text,ring_group_ringback text);
+        CREATE TABLE v_gateways(gateway_uuid uuid,gateway text,profile text,enabled boolean,register_transport text);
+        CREATE TABLE v_domain_settings(domain_uuid uuid,domain_setting_category text,domain_setting_subcategory text,domain_setting_value text,domain_setting_enabled boolean);
+        CREATE TABLE v_default_settings(default_setting_category text,default_setting_subcategory text,default_setting_value text,default_setting_enabled boolean);
+        CREATE TABLE v_voicemails(domain_uuid uuid,voicemail_id text,voicemail_transcription_enabled boolean,voicemail_mail_to text);
+        CREATE SEQUENCE readonly_probe;
+        INSERT INTO v_default_settings VALUES ('email','smtp_host','smtp.example.com',true);
+    ''')
+    readonly=diagnostics.ReadDatabase(db.name)
+    try:readonly.rows("SELECT nextval('readonly_probe')")
+    except common.Error:pass
+    else:raise AssertionError('Read-only transaction permitted a sequence write')
+    with patch.object(diagnostics,'STATE',Path(temporary)/'no-state'):
+        scanner=diagnostics.Scanner(db=readonly,probe=fixture_probe)
+        for method in ('discover','profiles','phones','dialplan','gateways','voicemail'):
+            getattr(scanner,method)()
+        assert not any(f['severity']=='unknown' for f in scanner.r['findings'])
+        assert any(row['observed']=='smtp.example.com' for s in scanner.r['sections'] for row in s['rows'])
+    print('PostgreSQL inventory projections and enforced read-only transactions: passed')
+
 if os.environ.get('PBXCTL_INTEGRATION')!='1':raise SystemExit('Set PBXCTL_INTEGRATION=1 only in an isolated test environment')
 name='pbxctl_test_'+uuid.uuid4().hex[:12];created=False
 try:
@@ -117,6 +141,7 @@ try:
         scratch_restore(temp,load_config(Path(__file__).resolve().parents[1]/'site.example.json'))
         feature_lifecycle(db,temp)
         nat_lifecycle(db,temp)
+        diagnostic_inventory(db,temp)
     print('PostgreSQL custom dump and isolated scratch restore: passed')
 finally:
     if created:run(['runuser','-u','postgres','--','dropdb','--force',name])
