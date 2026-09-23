@@ -16,6 +16,19 @@ def inspect(c):
             attempts=json.loads((STATE/'transcribe/state.json').read_text()).get('attempts',{})
             if any(x.get('count',0)>=3 for x in attempts.values()):issues.append('Transcription retries exhausted')
         except (OSError,ValueError):issues.append('Transcription state unavailable')
+    if (STATE/'ai-summary.json').exists() and c.get('ai_summary',{}).get('enabled'):
+        for name in ('pbxctl-ai-model.service','pbxctl-ai-summary.timer'):
+            if run(['systemctl','is-active',name],check=False).returncode:issues.append('Service unavailable: '+name)
+        probe=run(['runuser','-u',c['service_user'],'-g',c['service_group'],'-G','pbxctl-ai','--','php',ROOT/'assets/ai/voicemail-summary.php','--check'],check=False)
+        if probe.returncode:issues.append('Local voicemail summary integration check failed')
+        try:
+            attempts=json.loads((STATE/'ai/state.json').read_text()).get('attempts',{})
+            if any(x.get('count',0)>=3 for x in attempts.values()):issues.append('Voicemail summary retries exhausted')
+        except FileNotFoundError:pass  # No scheduled run yet.
+        except (OSError,ValueError):issues.append('Voicemail summary state unavailable')
+    if (STATE/'carrier-tls.json').exists() and c.get('carrier_tls',{}).get('enabled'):
+        status=run(['fs_cli','-x','sofia status gateway '+c['carrier_tls']['gateway_uuid']],check=False).stdout
+        if 'REGED' not in status or 'transport=tls' not in status.lower():issues.append('Carrier TLS registration is not established')
     if shutil.disk_usage('/').free<c['backup_min_free_gib']*1024**3:issues.append('Free disk below backup reserve')
     now=datetime.datetime.now(datetime.timezone.utc)
     if (STATE/'backup.json').exists():

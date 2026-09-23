@@ -5,9 +5,12 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import copy
+import uuid
 from .common import CONFIG, STATE, Error, atomic, hostname, need, validate
+from .features import DEFAULTS, KEYS, number_expression
 
-MODULES=('backup','tls','hardening','audio','transcription','smtp','alerts','offsite')
+MODULES=('backup','tls','hardening','audio','secure-calling','carrier-tls','hold-music','call-volume','transcription','ai-summary','smtp','alerts','offsite')
 FIELDS={
  'backup':('backup_min_free_gib',),
  'tls':('domain','lan_ip','tls_port','service_user','service_group'),
@@ -15,6 +18,11 @@ FIELDS={
  'audio':('internal_profile','freeswitch_conf'),
  'transcription':('domain','mailbox','transcription_enabled','whisper_port','whisper_cpu_percent','whisper_memory_mb','service_user','service_group'),
  'smtp':('domain','mailbox','smtp'), 'alerts':('smtp',), 'offsite':('remote_backup',),
+ 'secure-calling':('domain','internal_profile','secure_calling'),
+ 'carrier-tls':('domain','external_profile','provider_cidrs','carrier_tls'),
+ 'hold-music':('hold_music',),
+ 'call-volume':('domain','internal_profile','call_volume'),
+ 'ai-summary':('domain','ai_summary','service_user','service_group'),
 }
 
 def email(s,empty=False):
@@ -27,7 +35,38 @@ def private_path(s):
     return Path(s)
 
 def validate_all(c):
+    c=copy.deepcopy(c)
+    for key,value in DEFAULTS.items():c.setdefault(key,copy.deepcopy(value))
     c=validate(c)
+    for key,default in DEFAULTS.items():
+        need(isinstance(c[key],dict) and set(c[key])==set(default),'Unexpected fields for '+key)
+        need(type(c[key]['enabled']) is bool,key+'.enabled must be boolean')
+    for key,fields in [('secure_calling',['destinations']),('call_volume',['extensions','destinations'])]:
+        for field in fields:
+            need(isinstance(c[key][field],list) and len(c[key][field])<=100,'Select at most 100 destinations')
+            number_expression(c[key][field])
+    need(c['secure_calling']['mode'] in ('optional','mandatory'),'Secure calling mode must be optional or mandatory')
+    for key in ('read_level','write_level'):
+        need(type(c['call_volume'][key]) is int and -4<=c['call_volume'][key]<=4,'Call gain must be an integer from -4 to 4')
+    m=c['hold_music']
+    need(type(m['gain_db']) in (int,float) and -30<=m['gain_db']<=6,'Hold music gain must be -30 to +6 dB')
+    need(isinstance(m['directory'],str) and (not m['directory'] or (m['directory'].startswith('/usr/share/freeswitch/sounds/music/') and '..' not in PurePosixPath(m['directory']).parts)),'Choose a folder beneath /usr/share/freeswitch/sounds/music')
+    need(isinstance(m['stream'],str) and (not m['stream'] or re.fullmatch(r'[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*',m['stream'])),'Invalid music stream name')
+    need(not m['enabled'] or (m['directory'] and m['stream']),'Select a music directory and stream')
+    s=c['carrier_tls'];s['host']=hostname(s['host'])
+    need(type(s['portal_ready']) is bool,'carrier_tls.portal_ready must be boolean')
+    for key in ('gateway_uuid','route_uuid'):
+        need(isinstance(s[key],str),'Invalid carrier identifier')
+        if s[key]:need(str(uuid.UUID(s[key]))==s[key],'Use a canonical carrier UUID')
+        need(not s['enabled'] or s[key],'Select carrier gateway_uuid and route_uuid')
+    for key in ('server_port','listen_port'):
+        need(type(s[key]) is int and 1024<=s[key]<=65535,'Invalid carrier TLS port')
+    a=c['ai_summary']
+    need(type(a['port']) is int and 1024<=a['port']<=65535,'Invalid summary port')
+    ports=[c['tls_port'],c['trunk_port'],c['whisper_port'],s['listen_port'],a['port']]
+    need(len(set(ports))==len(ports),'Local listener ports must differ')
+    need(type(a['cpu_percent']) is int and 10<=a['cpu_percent']<=100,'AI CPU limit must be 10-100% of one core')
+    need(type(a['memory_mb']) is int and 1200<=a['memory_mb']<=4096,'AI memory limit must be 1200-4096 MiB')
     need(type(c.get('transcription_enabled')) is bool,'transcription_enabled must be boolean')
     s=c['smtp']; r=c['remote_backup']
     need(set(s)=={'host','port','security','auth','username','from_address','from_name','recipient','password_file'},'Unexpected SMTP fields')
@@ -95,5 +134,23 @@ def wizard(path,template):
     if ask('Configure off-server backups now? y/n','n').lower()=='y':
         r=c['remote_backup'];r['enabled']=True;r['repository']=ask('Repository: sftp:user@host:/path or s3:https://host/bucket',r['repository'])
         for k in ('keep_daily','keep_weekly','keep_monthly'):r[k]=int(ask(k+' (0 disables this retention rule)',r[k]))
+    c['transcription_enabled']=ask('Enable local voicemail transcription? y/n','y' if c['transcription_enabled'] else 'n').lower()=='y'
+    for module,key in KEYS.items():
+        section=c[key]
+        section['enabled']=ask('Enable '+module+'? y/n','y' if section['enabled'] else 'n').lower()=='y'
+        if not section['enabled']:continue
+        if key in ('secure_calling','call_volume'):
+            section['destinations']=ask('Phone/group destinations (comma separated)',','.join(section['destinations'])).split(',')
+        if key=='secure_calling':section['mode']=ask('SRTP offer policy: optional/mandatory',section['mode'])
+        if key=='carrier_tls':
+            for field in ('gateway_uuid','route_uuid','host'):section[field]=ask('Carrier '+field,section[field])
+            for field in ('server_port','listen_port'):section[field]=int(ask('Carrier '+field,section[field]))
+            section['portal_ready']=ask('Carrier media policy and inbound TLS route prepared? y/n','n').lower()=='y'
+        if key=='hold_music':
+            for field in ('directory','stream'):section[field]=ask('Hold music '+field,section[field])
+            section['gain_db']=float(ask('Music gain dB relative to preserved original',section['gain_db']))
+        if key=='call_volume':
+            section['extensions']=ask('Originating phone extensions (comma separated)',','.join(section['extensions'])).split(',')
+            for field in ('read_level','write_level'):section[field]=int(ask(field+' (-4 to 4; 0 unchanged)',section[field]))
     validate_all(c);atomic(path,json.dumps(c,indent=2)+'\n',0o644)
     print('Saved '+str(path)+'. Use plan before applying selected modules.')

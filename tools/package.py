@@ -16,7 +16,7 @@ for p in sorted(root.rglob('*')):
     if p.suffix=='.py':ast.parse(data,filename=str(p))
     paths.append(p)
 manifest={'version':(root/'VERSION').read_text().strip(),'sha256':{p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}}
-(root/'MANIFEST.json').write_text(json.dumps(manifest,indent=2)+'\n')
+(root/'MANIFEST.json').write_bytes((json.dumps(manifest,indent=2)+'\n').encode())
 paths.append(root/'MANIFEST.json');out=root/'dist';out.mkdir(exist_ok=True)
 with zipfile.ZipFile(out/'pbx-toolkit.zip','w',zipfile.ZIP_DEFLATED) as archive:
     for p in paths:archive.write(p,'pbx-toolkit/'+p.relative_to(root).as_posix())

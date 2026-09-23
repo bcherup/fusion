@@ -13,14 +13,14 @@ from .common import CONFIG, ROOT, STATE, Database, atomic, digest, identifier, l
 
 ARCHIVES=Path('/var/backups/pbxctl')
 RESTORES=STATE/'restores'
-QUIET_UNITS=('pbx-whisper.service','pbxctl-transcribe.timer','pbxctl-transcribe.service','pbxctl-health.timer','fusionpbx-local-transcribe.timer','fusionpbx-local-transcribe.service','fusionpbx-health.timer','email_queue.service','transcribe_queue.service','fax_queue.service','freeswitch.service','nginx.service')
+QUIET_UNITS=('pbxctl-ai-summary.timer','pbxctl-ai-summary.service','pbxctl-ai-model.service','pbx-whisper.service','pbxctl-transcribe.timer','pbxctl-transcribe.service','pbxctl-health.timer','fusionpbx-local-transcribe.timer','fusionpbx-local-transcribe.service','fusionpbx-health.timer','email_queue.service','transcribe_queue.service','fax_queue.service','freeswitch.service','nginx.service')
 
 def roots(c):
     return [c['web_root'],c['freeswitch_conf'],c['freeswitch_scripts'],'/etc/fusionpbx','/etc/freeswitch-tls','/etc/letsencrypt',
         '/etc/nginx','/etc/php','/etc/fail2ban','/etc/iptables','/etc/systemd/system','/etc/cron.d','/etc/cron.daily/fusionpbx-backup',
         '/usr/local/sbin','/usr/local/lib/fusionpbx-local','/var/lib/freeswitch/storage','/var/lib/freeswitch/recordings',
         '/usr/share/freeswitch/sounds','/opt/pbx-whisper/models','/opt/pbx-whisper/build/bin',str(ROOT),str(CONFIG.parent),str(STATE),
-        '/opt/fusionpbx-personal','/etc/fusionpbx-personal','/var/lib/fusionpbx-personal','/var/lib/fusionpbx-local-transcribe']
+        '/opt/fusionpbx-personal','/etc/fusionpbx-personal','/var/lib/fusionpbx-personal','/var/lib/fusionpbx-local-transcribe','/opt/pbxctl-ai']
 
 def inventory(c):
     return {'domain':c['domain'],'lan_ip':c['lan_ip'],'database':c['database'],'architecture':platform.machine(),
@@ -130,9 +130,13 @@ def restore(directory,c):
     import pwd,grp
     with tarfile.open(Path(directory)/'files.tar.gz','r:gz') as tar:
         user_names={m.uname for m in tar if m.uname}
+        group_names={m.gname for m in tar if m.gname}
     if 'pbx-whisper' in user_names and run(['id','-u','pbx-whisper'],check=False).returncode:
         run(['useradd','--system','--home-dir','/nonexistent','--no-create-home','--shell','/usr/sbin/nologin','pbx-whisper'])
         run(['apt-get','install','-y','ffmpeg','php-curl'],timeout=600)
+    if 'pbxctl-ai' in user_names|group_names and run(['id','-u','pbxctl-ai'],check=False).returncode:
+        run(['useradd','--system','--home-dir','/nonexistent','--no-create-home','--shell','/usr/sbin/nologin','pbxctl-ai'])
+        run(['apt-get','install','-y','libgomp1','php-curl'],timeout=600)
     for name in user_names:pwd.getpwnam(name)
     snapshot=backup(c);active=stop_services()
     stage=RESTORES/uuid.uuid4().hex;stage.mkdir(parents=True,mode=0o700)

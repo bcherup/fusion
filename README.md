@@ -13,6 +13,8 @@ This is a **review release**. Offline safety/behavior and adapter HTTP tests are
 | `install` | Run a pinned official base installer on a fresh Debian 13 host, then optionally configure modules |
 | `deploy` | Install only this toolkit beside an existing PBX |
 | `configure` | Apply selected independent modules with scoped recovery records |
+| `feature` | Enable/disable one feature or adjust its volume settings |
+| `restore-summary-text` | Restore unchanged generated voicemail notes to their saved original transcripts |
 | `backup` / `verify-backup` | Create a full private recovery set; check hashes and optionally perform an isolated PostgreSQL restore |
 | `migrate` / `restore` / `activate` | Transfer, stage, and deliberately activate a replacement PBX |
 | `check` / `check-media` | Inspect local health or one active call's SRTP confirmation |
@@ -64,7 +66,12 @@ pbxctl configure --modules backup,audio --apply --allow-restart
 | `tls` | Deploy an existing trusted certificate and renewal hook |
 | `hardening` | Authenticated SIP, NAT hostname, TLS profile, exact carrier ACL, failed-auth jail |
 | `audio` | Opus → G.722 → G.711 on the internal profile |
+| `secure-calling` | Offer or require SRTP on calls to selected phones/groups |
+| `carrier-tls` | TLS signaling and required outbound SRTP on one credential-registration trunk |
+| `hold-music` | Adjust a selected music folder in dB; preserve and restore originals |
+| `call-volume` | Separate phone microphone/listening gain on selected call legs |
 | `transcription` | Optional local English Whisper model, external adapter, and new-voicemail worker |
+| `ai-summary` | Optional local voicemail summaries, quoted follow-up requests and callback details |
 | `smtp` | Generic SMTP transport and the selected mailbox email recipient |
 | `alerts` | Local health checks and SMTP change/recovery notifications |
 | `offsite` | Optional encrypted SFTP/S3 backup copying after a successful local backup |
@@ -72,6 +79,51 @@ pbxctl configure --modules backup,audio --apply --allow-restart
 Repeated unchanged module configuration is skipped. Later edits to managed files/database fields stop reconfiguration for review. Unselected module settings must not change implicitly. Credentials, devices, ring groups, and incoming routing are not automatically recreated. On an installed host, `pbxctl setup` saves a candidate at `/root/pbxctl-site.json`; apply its selected changes with `pbxctl configure --config /root/pbxctl-site.json --modules ... --apply`. Setup does not overwrite the active site file.
 
 For a new certificate, `certificate --apply --agree-acme-tos` supports Cloudflare DNS validation using the configured private credentials file. Other DNS providers can obtain a certificate with Certbot separately; `tls` uses the existing lineage under `/etc/letsencrypt/live/DOMAIN`. Apply `tls` before `hardening`. Configure carrier addresses and the external profile's provider ACL before hardening. Firewall application is a separate step.
+
+### Enable, disable, or adjust a feature
+
+Version 0.3 adds a `feature` menu and command. Older site files receive disabled defaults for the new modules. First use `setup` to select the desired extensions, music folder/stream, and optional trunk. Apply that candidate using `configure --config /root/pbxctl-site.json --modules ... --apply`. Subsequent feature commands use the active configuration by default:
+
+```sh
+pbxctl feature --name secure-calling --enable
+pbxctl feature --name secure-calling --enable --apply
+pbxctl feature --name hold-music --enable --gain-db -8 --apply
+pbxctl feature --name call-volume --enable --read-level 0 --write-level -1 --apply
+pbxctl feature --name ai-summary --enable --apply
+pbxctl feature --name ai-summary --disable --apply
+```
+
+Omit `--apply` to preview. Toggle commands save successful changes to `/etc/pbxctl/site.json`; a supplied candidate file remains unchanged. New call rules live in tenant-scoped, toolkit-owned dialplans. They do not edit the application's tracked source. Failed configuration attempts restore their recorded changes; later external edits stop automatic reconfiguration for review.
+
+### Phone and carrier encryption
+
+`secure_calling.destinations` lists phone extensions or ring groups (defaults: `1000`, `600`). After trusted TLS is working, enable `secure-calling` to export an SDES SRTP offer to those destinations. `mode: optional` supports mixed phones but **permits unencrypted RTP fallback**. `mandatory` refuses peers that cannot negotiate the selected SRTP suite. This rule controls PBX-originated phone legs; configure each phone for TLS and required outgoing SDES too. TLS signaling and SRTP audio must both be tested. Disabling removes the toolkit's offer rule from new calls; it leaves certificates, TLS listeners, and other media policies intact.
+
+`carrier-tls` is separate. It requires a dedicated external profile with exactly one enabled credential-registration gateway, an existing TLS certificate, verified provider `/32` addresses, and one tenant outbound route with a single direct gateway bridge. Select `gateway_uuid` and `route_uuid` from the PBX records. The initial provider example is `sip.telnyx.com:5061`, with a local TLS listener on `5081`. Prepare the provider portal's encrypted-media policy and inbound TLS routing, then set `carrier_tls.portal_ready` to `true`.
+
+```sh
+pbxctl feature --name carrier-tls --enable --apply --allow-restart
+pbxctl feature --name carrier-tls --disable --apply --allow-restart
+```
+
+Activation checks the remote certificate's trust and hostname, configures a TLS-only external listener, and requires outbound SRTP on the selected route. It restarts only the external profile when no other selected module requires a full restart, checks for zero active calls, and rolls back if TLS registration fails. Disable restores the selected gateway/profile/route fields captured before first enable. Adjust the provider portal to match. Other trunk authentication types require manual configuration in this release.
+
+Firewall and router changes remain explicit. With this option enabled, `firewall` generates provider-only TCP rules for the selected TLS listener. An already-installed guard must be rolled back/reapplied deliberately using its saved transaction; feature activation does not replace an existing firewall. Ensure required inbound routing works before the switch. **Registered over TLS does not prove encrypted call audio**: use `check-media` on incoming and outgoing carrier legs. PSTN calls are not end-to-end encrypted by this setting.
+
+### Music and call volume
+
+For music, select one directory beneath `/usr/share/freeswitch/sounds/music` and its existing local-stream name, without the `local_stream://` prefix or sample-rate suffix. For example, directory `/usr/share/freeswitch/sounds/music/voip.example.com/default` and stream `voip.example.com/default`. Verify the actual directory and name in your installation before using them. All WAV variants below that folder are adjusted together: PCM16, mono/stereo, 8/16/32/48 kHz, at most 64 MiB per file. Gain ranges from -30 to +6 dB; clipping is refused.
+
+The first apply privately preserves each original. Every later adjustment starts from that baseline, so repeated `-8` settings do not make the music progressively quieter. `--disable` restores the exact original bytes and refreshes the streams. Changes to the track set or externally edited files require a baseline review; the tool will not overwrite them. Shared music folders affect every tenant that uses those files. The toolkit does not import tracks or change music licensing.
+
+Call volume uses FreeSWITCH gain **steps**, from -4 to +4, rather than dB. `read_level` changes audio received from the selected phone; `write_level` changes audio sent to it. Zero is neutral. `call_volume.extensions` selects originating phone numbers and `destinations` selects answered extensions/groups. A group setting applies to its resulting call legs, including any external destinations in that group. Listening gain also affects prompts/music sent on that leg. Adjust music with `hold-music` when only the music is too loud.
+
+```sh
+pbxctl feature --name hold-music --disable --apply
+pbxctl feature --name call-volume --disable --apply
+```
+
+Call-gain changes affect new calls. Disable turns off the toolkit rules without changing existing calls or the device's own volume settings. Positive gain can distort already-loud speech; start with one step and test both directions.
 
 ### Optional local transcription
 
@@ -84,6 +136,27 @@ pbxctl configure --modules transcription --apply
 Requires an existing mailbox, filesystem voicemail, suitable disk/RAM, and a compatible Transcribe interface. If absent, the official Transcribe app is installed at the reviewed revision and its schema/defaults are applied. Whisper source/model pins and resource limits are in `lib/services.py`. The custom adapter lives under `/opt/pbxctl/assets/app`, linked into the application's loader; vendor adapter files remain unchanged.
 
 To disable, set `transcription_enabled` to `false` in a candidate configuration and run Configure for that module. Re-enabling preserves the existing cutoff/retry state. Originals and existing transcripts are retained. Existing differently managed custom Whisper workers are detected and refused rather than overwritten; those installations need an explicit migration of ownership/state.
+
+The shortcut is `pbxctl feature --name transcription --enable --apply`, or `--disable`. Disable summaries first if they are enabled.
+
+### Optional local voicemail summaries
+
+Enable toolkit-managed transcription first, then `ai-summary`. Debian 13 **amd64** is supported by the pinned CPU runtime. Plan for at least 4 GiB system RAM and 3 GiB free installation space, plus voicemail and backup storage. Installation downloads checksum-pinned llama.cpp `b10964` and Qwen2.5-1.5B-Instruct Q4_K_M; this uses local CPU and has no paid API dependency. There are no model downloads if the module is skipped.
+
+The authenticated model service listens only on loopback. Separate systemd services limit CPU/RAM; the summary worker waits for idle calls and shares an inference lock with the background transcription worker. Defaults cap model use at half of one core and 1500 MiB. The worker stops its request if phone activity begins. Direct on-demand transcription through the PBX interface is outside this background-worker lock.
+
+New opted-in voicemail in the configured tenant receives labeled notes above the exact original transcript. Follow-up and contact quotes must match the transcript. Model output can be wrong; the recording and original text remain available. The worker cannot place calls, send messages, or act on instructions contained in a voicemail. It processes one message per run, preserves concurrent manual edits, bounds retries, and reports repeated failures through `check`. This is asynchronous mailbox text; it does not hold an already-sent voicemail email waiting for a summary.
+
+Disable stops the summary timer, worker, and model. It retains models, recordings, transcripts, existing notes, and progress so re-enabling does not redownload everything. To remove unchanged generated notes from existing messages:
+
+```sh
+pbxctl feature --name ai-summary --disable --apply
+pbxctl restore-summary-text --apply
+```
+
+Restoration uses compare-and-set updates and preserves manual edits. Re-enabling may summarize restored messages again. Private original-text copies are cleaned up by the enabled worker after the corresponding voicemail is deleted; disabled workers do not perform cleanup. Backups include these private copies and models. An existing standalone AI deployment is refused to avoid duplicate workers; migrate its units/state deliberately rather than running the fresh-install module over it.
+
+Application updates run a read-only schema/interface check while services are stopped. Custom source remains under `/opt/pbxctl`, runtime under `/opt/pbxctl-ai`, and configuration/progress under `/etc/pbxctl` and `/var/lib/pbxctl`. Future upstream interface changes can still require an adapter update; keeping vendor Git clean prevents local-edit conflicts, not every possible compatibility issue.
 
 ### Any compatible SMTP provider
 
@@ -200,7 +273,9 @@ The check reports actual audio-security confirmation and negotiated cipher witho
 
 ```sh
 python3 -B tests/test_toolkit.py
+python3 -B tests/test_features.py
 python3 -B tests/test_adapter_http.py
+php tests/test_summary.php
 python3 tools/package.py
 ```
 

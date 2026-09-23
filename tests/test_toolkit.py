@@ -194,12 +194,12 @@ class CliTests(unittest.TestCase):
             self.assertTrue(result['apply_required']);privileged.assert_not_called()
     def test_update_option_available(self):self.assertEqual(pbxctl.parser().parse_args(['update']).target,'pbx')
     def test_media_only_reads_nonsecret_fields(self):
-        with patch.object(pbxctl,'run',side_effect=[ok('true'),ok('true'),ok('AES_CM_128_HMAC_SHA1_80'),ok('OPUS'),ok('OPUS')]) as r:
+        with patch.object(pbxctl,'run',side_effect=[ok('true'),ok('true'),ok('AES_CM_128_HMAC_SHA1_80'),ok('internal'),ok('OPUS'),ok('OPUS')]) as r:
             result=pbxctl.media('12345678-1234-1234-1234-123456789012')
             self.assertTrue(result['encrypted_audio_confirmed'])
             self.assertTrue(all('uuid_dump' not in str(x) for x in r.call_args_list))
     def test_media_policy_not_treated_as_confirmation(self):
-        with patch.object(pbxctl,'run',side_effect=[ok('true'),ok('_undef_'),ok('_undef_'),ok('OPUS'),ok('OPUS')]):
+        with patch.object(pbxctl,'run',side_effect=[ok('true'),ok('_undef_'),ok('_undef_'),ok('internal'),ok('OPUS'),ok('OPUS')]):
             self.assertFalse(pbxctl.media('12345678-1234-1234-1234-123456789012')['encrypted_audio_confirmed'])
     def test_active_uuid_required(self):
         with self.assertRaises(common.Error):pbxctl.media('anything; shutdown')

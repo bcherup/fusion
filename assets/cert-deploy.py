@@ -22,6 +22,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 import sys
 sys.path.insert(0, '/opt/pbxctl')
 from lib.common import load
+from lib.features import tls_listener_ports
 C = load()
 HOST = C['domain']
 LINEAGE = Path('/etc/letsencrypt/live') / HOST
@@ -82,14 +83,15 @@ def switch_target(target):
 
 
 def handshake(expected):
-    for version in (ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3):
-        context = ssl.create_default_context()
-        context.minimum_version = version
-        context.maximum_version = version
-        with socket.create_connection((C['lan_ip'], C['tls_port']), timeout=5) as tcp:
-            with context.wrap_socket(tcp, server_hostname=HOST) as tls:
-                actual = hashlib.sha256(tls.getpeercert(binary_form=True)).hexdigest()
-                require(actual == expected, 'Listener certificate differs from renewed certificate')
+    for port in tls_listener_ports(C):
+        for version in (ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3):
+            context = ssl.create_default_context()
+            context.minimum_version = version
+            context.maximum_version = version
+            with socket.create_connection((C['lan_ip'], port), timeout=5) as tcp:
+                with context.wrap_socket(tcp, server_hostname=HOST) as tls:
+                    actual = hashlib.sha256(tls.getpeercert(binary_form=True)).hexdigest()
+                    require(actual == expected, 'Listener certificate differs from renewed certificate')
 
 
 def reload_and_verify(expected):

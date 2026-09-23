@@ -5,14 +5,16 @@ import os
 from pathlib import Path
 import shutil
 from .common import *
-from .config import module_config, selected, validate_all
+from .config import MODULES, module_config, selected, validate_all
 from . import base, mail, pbx, recovery, services
+from . import features
 
 MODULE_UNITS={
     'backup':['pbxctl-backup.service'],
     'tls':['certbot.timer'],
     'alerts':['pbxctl-health.timer','pbxctl-health.service'],
     'transcription':['pbxctl-transcribe.timer','pbxctl-transcribe.service','pbx-whisper.service'],
+    'ai-summary':['pbxctl-ai-summary.timer','pbxctl-ai-summary.service','pbxctl-ai-model.service'],
 }
 
 def capture_runtime(module):
@@ -25,9 +27,13 @@ def rollback_change(ch):
     states=json.loads(path.read_text()) if path.exists() else {}
     for name in states:run(['systemctl','stop',name],check=False)
     ch.rollback()
+    music=ch.path/'music-refresh.json'
+    if music.exists():
+        value=json.loads(music.read_text())
+        for rate in value['rates']:run(['fs_cli','-x','local_stream hup '+value['stream']+'/'+str(rate)],check=False)
     run(['systemctl','daemon-reload'])
     for name,state in reversed(list(states.items())):
-        if name.endswith('.timer') or name=='pbx-whisper.service':
+        if name.endswith('.timer') or name in ('pbx-whisper.service','pbxctl-ai-model.service'):
             if state['enabled'] in ('enabled','enabled-runtime'):
                 args=['systemctl','enable']
                 if state['enabled']=='enabled-runtime':args+=['--runtime']
@@ -36,37 +42,59 @@ def rollback_change(ch):
                 run(['systemctl','disable',name],check=False)
         if state['active']:run(['systemctl','start',name])
 
+def managed_actions(previous):
+    path=Path(previous['backup'])
+    manifest=path/'managed.json'
+    return json.loads((manifest if manifest.exists() else path/'undo.json').read_text())
+
+def save_managed(ch,previous):
+    # Retain ownership checks across disable/re-enable, even when disable writes no files.
+    merged={}
+    for a in [*(managed_actions(previous) if previous else []),*ch.actions]:
+        key=(a['kind'],a.get('table'),a.get('id'),a.get('path'))
+        if a['kind']=='row' and key in merged:
+            a={**a,'after_fields':{**merged[key]['after_fields'],**a['after_fields']}}
+        merged[key]=a
+    atomic(ch.path/'managed.json',json.dumps(list(merged.values()),indent=2))
+
 def check_managed(marker,db):
     previous=json.loads(marker.read_text())
-    for a in json.loads((Path(previous['backup'])/'undo.json').read_text()):
+    for a in managed_actions(previous):
         if a['kind']=='file':
             p=Path(a['path'])
             # Worker progress is live data, never desired configuration.
             if p==STATE/'transcribe/state.json':continue
             need(p.is_file() and not p.is_symlink() and digest(p)==a['after_sha256'],'Managed file changed; review before reconfiguration: '+str(p))
+        elif a['kind']=='symlink':
+            p=Path(a['path'])
+            need(p.is_symlink() and os.readlink(p)==a['target'],'Managed integration link changed')
         elif a['kind']=='row':
             rows=db.rows('SELECT * FROM '+identifier(a['table'])+' WHERE '+identifier(a['key'])+'='+literal(a['id']))
             need(len(rows)==1 and all(str(rows[0].get(k)).lower()==str(v).lower() for k,v in a['after_fields'].items()),'Managed database setting changed; review before reconfiguration')
     return previous
 
 def configure(c,modules,allow_restart=False):
-    base.supported();validate_all(c);db=Database(c['database'])
+    base.supported();c=validate_all(c);db=Database(c['database'])
     need((ROOT/'VERSION').exists(),'Deploy the toolkit first')
     for p in (STATE,CONFIG.parent):p.mkdir(mode=0o755,parents=True,exist_ok=True)
     pbx.domain(db,c)
-    if any(m in modules for m in ('hardening','audio')):
+    if any(m in modules for m in ('hardening','audio','carrier-tls')):
         need(allow_restart,'These modules require --allow-restart during an idle window');idle()
     if 'hardening' in modules:need(c['provider_cidrs'],'Enter verified carrier /32 addresses before hardening')
     previous_config=json.loads(CONFIG.read_text()) if CONFIG.exists() else None
     # Configuration of shared runtime fields must not silently alter unselected modules.
     if previous_config:
-        for m in ('tls','hardening','audio','transcription','smtp','alerts','offsite','backup'):
+        for m in MODULES:
             if m not in modules and (STATE/(m+'.json')).exists():
                 desired=json.loads((STATE/(m+'.json')).read_text())['desired']
                 desired.pop('credential_digest',None)
                 need(module_config(c,m)==desired,'Also select '+m+' because its configuration changes')
+    if 'transcription' in modules and not c['transcription_enabled']:
+        need(not c['ai_summary']['enabled'],'Disable AI summaries before disabling their transcription input')
+    if 'ai-summary' in modules and not c['ai_summary']['enabled']:
+        modules=['ai-summary',*[m for m in modules if m!='ai-summary']]
     atomic(CONFIG,json.dumps(c,indent=2)+'\n',0o644)
-    results=[];restart=False;completed=[]
+    results=[];restart=False;completed=[];profiles=set()
     try:
         for m in modules:
             marker=STATE/(m+'.json');desired=module_config(c,m)
@@ -81,8 +109,15 @@ def configure(c,modules,allow_restart=False):
             atomic(ch.path/'runtime.json',json.dumps(capture_runtime(m)))
             before_marker=marker.read_bytes() if marker.exists() else None
             try:
+                extra={}
                 if m in ('audio','hardening'):getattr(pbx,m)(db,c,ch);restart=True
                 elif m in ('backup','tls','transcription'):getattr(services,m)(db,c,ch)
+                elif m=='ai-summary':
+                    from .ai import configure as ai_configure
+                    extra=ai_configure(db,c,ch)
+                elif m in features.KEYS:
+                    extra=getattr(features,m.replace('-','_'))(db,c,ch)
+                    if extra.get('restart_profile'):profiles.add(extra['restart_profile'])
                 elif m=='smtp':mail.configure(db,c,ch)
                 elif m=='alerts':mail.validate_ready(c['smtp']);services.health(db,c,ch)
                 elif m=='offsite':
@@ -91,17 +126,30 @@ def configure(c,modules,allow_restart=False):
                         environment(c);run(['apt-get','install','-y','restic'],timeout=600)
                         execute(c,['snapshots','--json'])
                     # Verify repository access before enabling unattended uploads.
-                atomic(marker,json.dumps({'module':m,'desired':desired,'backup':str(ch.path),'enabled':c['transcription_enabled'] if m=='transcription' else True},indent=2))
-                results.append({'module':m,'status':'configured','rollback':str(ch.path)})
+                enabled=c['transcription_enabled'] if m=='transcription' else c[features.KEYS[m]]['enabled'] if m in features.KEYS else True
+                save_managed(ch,previous)
+                atomic(marker,json.dumps({'module':m,'desired':desired,'backup':str(ch.path),'enabled':enabled},indent=2))
+                results.append({'module':m,'status':'configured','rollback':str(ch.path),**extra})
                 completed.append((ch,marker,before_marker))
             except BaseException:
                 if previous_config is not None:atomic(CONFIG,json.dumps(previous_config,indent=2)+'\n',0o644)
                 else:CONFIG.unlink(missing_ok=True)
                 rollback_change(ch);raise
-        if any(m in modules for m in ('audio','hardening','smtp','transcription')):
-            invalidate(c,['configuration:sofia.conf','configuration:acl.conf','settings:'+c['domain'],'directory:'+c['mailbox']+'@'+c['domain']])
+        if any(m in modules for m in ('audio','hardening','smtp','transcription','secure-calling','carrier-tls','call-volume')):
+            invalidate(c,['configuration:sofia.conf','configuration:acl.conf','dialplan:'+c['domain'],'settings:'+c['domain'],'directory:'+c['mailbox']+'@'+c['domain']])
         if 'hardening' in modules:run(['fail2ban-client','reload'])
         if restart:idle();run(['systemctl','restart','freeswitch'],timeout=120)
+        else:
+            for profile in profiles:
+                idle();run(['fs_cli','-x','sofia profile '+profile+' restart reloadxml'])
+        if profiles and c['carrier_tls']['enabled']:
+            import time
+            ready=False
+            for _ in range(30):
+                status=run(['fs_cli','-x','sofia status gateway '+c['carrier_tls']['gateway_uuid']]).stdout
+                if 'REGED' in status and 'transport=tls' in status.lower():ready=True;break
+                time.sleep(1)
+            need(ready,'Carrier TLS registration did not complete; rolling back. Inspect the carrier before retrying.')
         for p in Path('/etc/php').glob('*/fpm'):
             run(['systemctl','reload','php'+p.parent.name+'-fpm'],check=False)
         return results
@@ -113,16 +161,20 @@ def configure(c,modules,allow_restart=False):
             if before_marker is None:marker.unlink(missing_ok=True)
             else:atomic(marker,before_marker)
         run(['systemctl','daemon-reload'],check=False)
+        if completed and any(m in modules for m in ('secure-calling','carrier-tls','call-volume')):
+            invalidate(c,['configuration:sofia.conf','dialplan:'+c['domain']])
+            for profile in profiles:
+                idle();run(['fs_cli','-x','sofia profile '+profile+' restart reloadxml'],check=False)
         if 'hardening' in modules:run(['fail2ban-client','reload'],check=False)
         raise
 
 def deploy(source,c):
     base.supported()
-    if CONFIG.exists():need(json.loads(CONFIG.read_text())==c,'An installed site differs; use configure to change settings')
+    if CONFIG.exists():need(validate_all(json.loads(CONFIG.read_text()))==c,'An installed site differs; use configure to change settings')
     from .updates import tool
     result=tool(source,True)
     CONFIG.parent.mkdir(mode=0o755,parents=True,exist_ok=True)
-    if CONFIG.exists():need(json.loads(CONFIG.read_text())==c,'An installed site differs; use configure to change settings')
+    if CONFIG.exists():need(validate_all(json.loads(CONFIG.read_text()))==c,'An installed site differs; use configure to change settings')
     else:atomic(CONFIG,json.dumps(c,indent=2)+'\n',0o644)
     STATE.mkdir(mode=0o755,parents=True,exist_ok=True);STATE.chmod(0o755)
     for top,dirs,files in os.walk(ROOT):os.chmod(top,0o755)

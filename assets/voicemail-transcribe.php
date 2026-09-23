@@ -3,6 +3,7 @@
 if (PHP_SAPI !== 'cli') { exit(1); }
 umask(0077);
 $config = json_decode(file_get_contents('/etc/pbxctl/site.json'), true, 512, JSON_THROW_ON_ERROR);
+if (!($config['transcription_enabled'] ?? false)) { exit(0); }
 require_once $config['web_root'] . '/resources/require.php';
 $stateDir = '/var/lib/pbxctl/transcribe';
 $lock = fopen($stateDir . '/worker.lock', 'c');
@@ -36,6 +37,8 @@ foreach ($rows ?: [] as $row) {
         }
     }
     if ($name === null) { continue; } // Originals remain untouched; filesystem storage is required.
+    $inference = fopen($stateDir . '/inference.lock', 'c');
+    if (!$inference || !flock($inference, LOCK_EX | LOCK_NB)) { break; }
     try {
         $transcribe = new transcribe($settings);
         $transcribe->audio_path = $dir;
@@ -50,6 +53,8 @@ foreach ($rows ?: [] as $row) {
     } catch (Throwable $e) {
         $state['attempts'][$id] = ['count' => $prior['count'] + 1, 'time' => time()];
         $failed++;
+    } finally {
+        flock($inference, LOCK_UN); fclose($inference);
     }
     unset($message, $transcribe);
     break; // One message at a time; the timer handles the next.

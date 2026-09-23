@@ -59,7 +59,15 @@ def inspect(web):
         probe=run(['runuser','-u',config['service_user'],'--','php','-r',php])
         adapter['autoload_interface_compatible']=probe.returncode==0
         if probe.returncode: issues.append('Custom adapter no longer loads with the installed FusionPBX interface')
-    return {'repositories':results,'transcription':adapter,'issues':issues,
+    summary={}
+    if Path('/var/lib/pbxctl/ai-summary.json').exists() and config_path.is_file():
+        config=json.loads(config_path.read_text())
+        asset=Path('/opt/pbxctl/assets/ai/voicemail-summary.php')
+        for name in ('summary.php','voicemail-summary.php','restore-summaries.php'):
+            summary[name+'_syntax_ok']=run(['php','-l',str(asset.parent/name)]).returncode==0
+        summary['database_interface_compatible']=run(['runuser','-u',config['service_user'],'--','php',str(asset),'--schema-check']).returncode==0
+        if not all(summary.values()):issues.append('Local voicemail summary integration needs review after the application update')
+    return {'repositories':results,'transcription':adapter,'ai_summary':summary,'issues':issues,
             'read_only':True,'does_not_predict_future_merge_conflicts':True}
 
 if __name__=='__main__':
