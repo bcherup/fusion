@@ -14,11 +14,23 @@ python3 pbxctl.py
 
 The console scans the server on entry, then stays open between operations. Use **Up/Down and Enter** to select, **Esc or Q** to return, and **Page Up/Page Down** to scroll. Number keys move to the corresponding menu choice; Enter opens it. Resize the terminal to at least 60 columns and 18 rows; wider terminals show a second pane with descriptions. Only the standard Python curses module is required.
 
-The main menu has System overview, Recommendations, Audio and hold music, Security and connectivity, Voicemail and email, Backups and recovery, Updates and maintenance, Install and configure, Export, Refresh, and domain selection. Configuration editors show saved preferences, explain units and scope, and save a separate draft. Module selection uses checkboxes. Leaving an editor with Esc discards its unsaved edits.
+The main menu has **Music and phone audio**, **Voicemail**, **Email**, **Backups**, **Call security**, **Updates**, **System status**, **Advanced**, and **Exit**. Each everyday page starts with observed current values above a short list of actions. These values stay visible at normal 80-column terminal widths. Choose **Refresh current status** to scan again; the header shows the scan time. Advanced retains technical configuration, carrier/firewall setup, installation and destructive recovery tools.
 
-Every PBX change has a review screen and an explicit Apply choice; Cancel is selected by default. Operations needing restarts also require an idle-maintenance acknowledgment. Selecting or editing a site file does not apply it. Reports are exported with private permissions and existing files are never overwritten. SMTP credentials use a private terminal prompt, not a report field. The console does not automatically fix findings.
+For example: **Music and phone audio → Hold-music volume → A little quieter → Apply**. The volume page reads the files/settings when opened and has **Read current level again**. Music shows its measured average file level in dBFS separately from the saved gain adjustment; phone volume shows listening and microphone gain in steps. These are not the handset's hardware volume or a measurement of the complete live call path. Music offers 1 dB quieter/louder, 3 dB quieter, a specific adjustment, and exact restoration of the preserved tracks. These direct controls need no site-configuration wizard or service restart. Phone changes affect new calls.
 
-For an existing site, pass `--config /path/to/site.json`. Optional `--domain` and `--database` scope the scan; changes are refused if those overrides conflict with the selected site file. A fresh draft uses discovered domain/LAN values where available and requires trusted management networks to be entered explicitly. Before applying modules on an existing PBX, deploy the toolkit through Install and configure.
+The first music change preserves the tracks as they exist at that moment. Earlier manual adjustments have no verified numeric baseline and are labeled accordingly. Later changes show the verified adjustment from those preserved tracks; gain never compounds across repeated applications. Only supported PCM16 WAV collections with matching database stream paths are eligible. One music folder can be managed at a time; manually changed tracks/settings require review. Phone controls initially select enabled numeric extensions and ring groups in the chosen domain; an existing managed scope is retained. Use Advanced for a narrower selection. Hardware volume and arbitrary custom audio scripts cannot be measured by these controls.
+
+**Voicemail** detects supported existing jobs, including legacy local transcription/summary jobs, and offers Pause or Resume. Pausing disables the timer; a job already running can finish. Models, recordings and generated text are retained. Resume can start the associated model and restore timer startup. Missing, masked or duplicate jobs require review instead of guessing. A disabled toolkit feature must be enabled through its configuration. First-time installation uses the existing module safeguards; legacy migrations are not performed automatically.
+
+**Email** asks for provider settings and a private credential, handles its candidate file internally, and offers a test message. **Backups** offers Back up now and a list of saved copies to verify, plus daily scheduling and optional remote storage. Remote repository access, credentials and initial storage setup still need to be prepared. **Call security** checks all current call legs without requiring a copied UUID; configured policies are labeled separately from actual encrypted-media confirmation. **Updates** separates checking upstream from reviewing and installing an update.
+
+When an operation needs site preferences for the first time, a short guided setup asks for the existing domain/address, actual trusted administration networks, contact email and mailbox. It never adopts the example network silently. Private console preferences live under `/root/.pbx-toolkit`; reviewed candidates are handled automatically. For a first module configuration or PBX update, the review explicitly includes installing the toolkit/dependencies before applying the selected change. Full fresh-server installation, unusual layouts, provider-specific carrier settings and recovery remain under Advanced.
+
+Advanced editors still expose all fields, save separate drafts, and offer module selection. Leaving an editor with Esc discards its unsaved edits. Everyday changes use a single complete review with Cancel selected by default, and scrollable Current/New/scope details. No navigation or status refresh applies settings.
+
+Every PBX change has a review screen and an explicit Apply choice; Cancel is selected by default. Restart requirements appear in the review and the backend checks for an idle maintenance window. Advanced operations can require an additional maintenance acknowledgment. Selecting or editing a site file does not apply it. Reports are exported with private permissions and existing files are never overwritten. SMTP credentials use a private terminal prompt, not a report field. The console does not automatically fix findings.
+
+For an existing site, pass `--config /path/to/site.json`. Optional `--domain` and `--database` select the inspected PBX. Configuration changes are refused if those overrides conflict with the selected site file. Direct volume controls read the selected live database, preserve recovery records, and update only that volume preference in a matching active site file, if present. A fresh draft uses discovered domain/LAN values where available and requires trusted management networks to be entered explicitly. Everyday module changes prepare the toolkit when needed as part of the reviewed operation; Advanced also offers separate deployment.
 
 For pipes or automation, use `status --format text` or `status --format json`; full-screen mode requires an interactive terminal. If terminal detection fails in a compatible SSH client, try `TERM=xterm-256color python3 pbxctl.py`.
 
@@ -32,6 +44,9 @@ For pipes or automation, use `status --format text` or `status --format json`; f
 | `deploy` | Install only this toolkit beside an existing PBX |
 | `configure` | Apply selected independent modules with scoped recovery records |
 | `feature` | Enable/disable one feature or adjust its volume settings |
+| `volume` | Discover current music/phone gain and preview a direct change without a site file; apply requires the returned confirmation token |
+| `job` | Preview/confirm pause or resume of a supported existing transcription, summary or alert timer |
+| `active-media` | Read codec and confirmed encryption for up to 20 active call legs; no raw SDP or key output |
 | `restore-summary-text` | Restore unchanged generated voicemail notes to their saved original transcripts |
 | `backup` / `verify-backup` | Create a full private recovery set; check hashes and optionally perform an isolated PostgreSQL restore |
 | `migrate` / `restore` / `activate` | Transfer, stage, and deliberately activate a replacement PBX |
@@ -227,7 +242,7 @@ pbxctl configure --modules smtp,alerts --apply
 pbxctl test-email --apply
 ```
 
-Enter the provider SMTP password/app password at the hidden prompt. It is not passed in command arguments or printed. PBX SMTP settings are stored in its protected database; independent health alerts use the private file. Confirm the test email arrived. SMTP acceptance alone is not inbox delivery.
+Enter the provider SMTP password/app password at the hidden prompt. It is not passed in command arguments or printed. PBX SMTP settings are stored in its protected database; independent health alerts use the private file. The everyday email wizard writes a new private credential version, preserving the previous reference if configuration fails. Private versions are retained for recovery. Confirm the test email arrived. SMTP acceptance alone is not inbox delivery.
 
 Google Workspace with a dynamic IP can use `smtp.gmail.com:587` and an app password when permitted by the account's 2-Step Verification/admin policy. Providers requiring OAuth-only authentication need an OAuth-capable relay or a future authentication adapter; this release does not implement OAuth token flows. An ordinary Google/Microsoft sign-in password is not universally usable for SMTP.
 
@@ -329,6 +344,10 @@ The check reports actual audio-security confirmation and negotiated cipher witho
 ```sh
 python3 -B tests/test_toolkit.py
 python3 -B tests/test_features.py
+python3 -B tests/test_diagnostics.py
+python3 -B tests/test_console.py
+python3 -B tests/test_quick_volume.py
+python3 -B tests/test_daily.py
 python3 -B tests/test_adapter_http.py
 php tests/test_summary.php
 python3 tools/package.py

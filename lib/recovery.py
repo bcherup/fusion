@@ -18,7 +18,7 @@ QUIET_UNITS=('pbxctl-ai-summary.timer','pbxctl-ai-summary.service','pbxctl-ai-mo
 def roots(c):
     return [c['web_root'],c['freeswitch_conf'],c['freeswitch_scripts'],'/etc/fusionpbx','/etc/freeswitch-tls','/etc/letsencrypt',
         '/etc/nginx','/etc/php','/etc/fail2ban','/etc/iptables','/etc/systemd/system','/etc/cron.d','/etc/cron.daily/fusionpbx-backup',
-        '/usr/local/sbin','/usr/local/lib/fusionpbx-local','/var/lib/freeswitch/storage','/var/lib/freeswitch/recordings',
+        '/usr/local/sbin','/usr/local/lib/fusionpbx-local','/usr/local/lib/pbxctl','/var/lib/freeswitch/storage','/var/lib/freeswitch/recordings',
         '/usr/share/freeswitch/sounds','/opt/pbx-whisper/models','/opt/pbx-whisper/build/bin',str(ROOT),str(CONFIG.parent),str(STATE),
         '/opt/fusionpbx-personal','/etc/fusionpbx-personal','/var/lib/fusionpbx-personal','/var/lib/fusionpbx-local-transcribe','/opt/pbxctl-ai',str(BACKUPS)]
 
