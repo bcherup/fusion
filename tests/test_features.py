@@ -130,6 +130,7 @@ class FeatureTests(unittest.TestCase):
 
     def test_backups_and_updates_cover_summary_runtime_and_jobs(self):
         self.assertIn('/opt/pbxctl-ai',recovery.roots(sample()))
+        self.assertIn(str(common.BACKUPS),recovery.roots(sample()))
         for unit in ('pbxctl-ai-summary.timer','pbxctl-ai-summary.service','pbxctl-ai-model.service'):
             self.assertIn(unit,recovery.QUIET_UNITS)
 

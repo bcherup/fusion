@@ -216,7 +216,7 @@ pbxctl backup --apply
 pbxctl verify-backup --archive /var/backups/pbxctl/EXACT-ID --apply
 ```
 
-The second command verifies hashes and restores into an isolated random database, then removes only that temporary database. Backups include custom modules, runtime/model, configuration/state, TLS material, PBX data, and media. Media is copied live; use a quiesced final backup for migration cutover.
+The second command verifies hashes and restores into an isolated random database, then removes only that temporary database. Backups include custom modules, runtime/model, configuration/state, module recovery records, TLS material, PBX data, and media. Recovery records preserve the ownership checks needed for later feature reconfiguration; their database/audio snapshots add to archive size. Media is copied live; use a quiesced final backup for migration cutover.
 
 On a replacement host with a matching base installation, deploy this toolkit and configure the same SIP domain/layout with the replacement LAN address. The source also needs this toolkit deployed for the migration command:
 

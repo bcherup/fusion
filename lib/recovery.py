@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import tarfile
 import uuid
-from .common import CONFIG, ROOT, STATE, Database, atomic, digest, identifier, literal, need, run
+from .common import BACKUPS, CONFIG, ROOT, STATE, Database, atomic, digest, identifier, literal, need, run
 
 ARCHIVES=Path('/var/backups/pbxctl')
 RESTORES=STATE/'restores'
@@ -20,7 +20,7 @@ def roots(c):
         '/etc/nginx','/etc/php','/etc/fail2ban','/etc/iptables','/etc/systemd/system','/etc/cron.d','/etc/cron.daily/fusionpbx-backup',
         '/usr/local/sbin','/usr/local/lib/fusionpbx-local','/var/lib/freeswitch/storage','/var/lib/freeswitch/recordings',
         '/usr/share/freeswitch/sounds','/opt/pbx-whisper/models','/opt/pbx-whisper/build/bin',str(ROOT),str(CONFIG.parent),str(STATE),
-        '/opt/fusionpbx-personal','/etc/fusionpbx-personal','/var/lib/fusionpbx-personal','/var/lib/fusionpbx-local-transcribe','/opt/pbxctl-ai']
+        '/opt/fusionpbx-personal','/etc/fusionpbx-personal','/var/lib/fusionpbx-personal','/var/lib/fusionpbx-local-transcribe','/opt/pbxctl-ai',str(BACKUPS)]
 
 def inventory(c):
     return {'domain':c['domain'],'lan_ip':c['lan_ip'],'database':c['database'],'architecture':platform.machine(),
