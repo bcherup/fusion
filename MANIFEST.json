@@ -1,8 +1,8 @@
 {
-  "version": "0.3.1",
+  "version": "0.4.0",
   "sha256": {
     ".gitattributes": "d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c",
-    ".github/workflows/checks.yml": "5b0c48c118a4bd18f4adae2c515f71f74ec05bbe0b577109f12955a73dbe2761",
+    ".github/workflows/checks.yml": "b86e0671ba51adae953578fb67052dd1494eb655a0d7015998a3015d6a92c200",
     ".gitignore": "811e22da9adcc05e6ee49c4c1708254712d709928cfb702d56e62ea4ee88d5d2",
     "assets/ai/restore-summaries.php": "e3baa25ac7b47917d9d582e9cc980b9eccc30913e32a75ab09f7db3c0dbc60ae",
     "assets/ai/summary.php": "26b22441f7d0b96466961b7ca3a6a45c0b930519b55c5004fead73a3ef586523",
@@ -22,6 +22,7 @@
     "lib/base.py": "6ae725e73e77144c407e63bdd060593eeb2fba9c128ec0b6ec1b172fe21daf58",
     "lib/common.py": "9bb106c472d3bb83d2ca1aaa4ed6405151539a4d406a20dfc8780d162b3ef978",
     "lib/config.py": "0da7cb1baf98dcea5d53e01715f3782fb4cf5b5ba9c751993ac647ac5e1591dd",
+    "lib/diagnostics.py": "872f1d6eb4ae9c1ec268427a9d646a228bd5263a2c22a2d15c48687fb5206a91",
     "lib/features.py": "6381806385074cafb58e0e0b77935543f81d6ee4f76e5c60925f0ee4bbd3d2c4",
     "lib/firewall.py": "4e4ca8643ca79df826ed916d4ebd6b6d0603dadfb6a8a839527308c68f9e23ec",
     "lib/health.py": "d5f82e3642b531413405455a417bfb28cca19be09bc5a609a78417d613b65f00",
@@ -35,17 +36,18 @@
     "lib/updates.py": "4d151f73cbf9875b1f100ddab5c1237fc52dd0fd4f88c71a8fb10e2707f7d7f0",
     "LICENSE": "332da2dd1cdc1d7d65fc7221813aad784670e0a5f44df11986579dab564f65ad",
     "migrate-new-pbx.sh": "bd348638b621b27bfe1e5ada1a9b8457ca85b04140b9243d160ebc786167b116",
-    "pbxctl.py": "b298c5443f661e5f87e15b25a2731bff084e7efcda63702749a84acd7ae2fbec",
+    "pbxctl.py": "c41fb9b1f0ffdca8080e0f5b24228b9cd79734f7659963e6b803a2616ae3a24b",
     "prepare-old-pbx.sh": "dfbce14254c4fd4a22b0fd6bd846ad7be52dbefab8b282c552b290a69bf21235",
-    "README.md": "b92febd9f61e5e9a669a7b4b57a4504086648cb1e756c895272a252602e3cbd8",
+    "README.md": "4cce991a6d4fb8eb9a844776f2f48845ed6fb912440bdd073333b0739aac2a53",
     "site.example.json": "a82e5fc95c30f65bc0d26997852b1bac2de7cab75391ba48f2ccabc422201a2b",
     "tests/test_adapter.php": "37bf694b54497ebd41e7f6a56d34f30cde49edadf539481ff9ba1779cfc52e25",
     "tests/test_adapter_http.py": "b13b34513e4f16bbd34292d7b439f897ad143f6fca57cc3f345683b4fc35c65b",
+    "tests/test_diagnostics.py": "5127e1c35fff4245f040cdbcc0dbf1a5ef127614d1ff14e4f5543e98d0c08516",
     "tests/test_features.py": "c6a538731add851518e5a0a0a8d59fc7788abe33ddf624f158253202dae608e0",
-    "tests/test_postgres.py": "176bb3098732b128bf545416381cdd02a613c675635de2e92d9d7090bdc4b3f3",
+    "tests/test_postgres.py": "8dbde800be753dc6d6624fe941019fe8c2ca0e028a8363702a17463feb8723f2",
     "tests/test_summary.php": "27ef4e88423de1b105e2868420556762918a03bb52d256b8712142b866a00802",
     "tests/test_toolkit.py": "f7d09cce778678097f67d227e770ee86e39338025619e3009497019c4d2261aa",
     "tools/package.py": "d95dc588ea1467f675e45aad15e1f86476441ca36d6e409b5a169940b3922628",
-    "VERSION": "79e3f22ca37c7fdf4c29ae3648d6b008c3cb6547260a453409275470919dc674"
+    "VERSION": "40b8eb4000a913a7791090535f291d3d369874162a89ef3c9e3d4e887a1b9e79"
   }
 }

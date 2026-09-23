@@ -14,7 +14,7 @@ SOURCE=Path(__file__).resolve().parent
 
 def parser():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action',nargs='?',default='menu',choices=['menu','setup','plan','install','deploy','configure','feature','certificate','smtp-credential','test-email','backup','verify-backup','restore','activate','migrate','check','check-media','firewall','update','offsite-init','offsite-upload','offsite-restore','retention','rollback','restore-summary-text'])
+    p.add_argument('action',nargs='?',default='menu',choices=['menu','setup','plan','install','deploy','configure','feature','certificate','smtp-credential','test-email','backup','verify-backup','restore','activate','migrate','check','check-media','status','doctor','firewall','update','offsite-init','offsite-upload','offsite-restore','retention','rollback','restore-summary-text'])
     p.add_argument('--config',help='Site configuration; setup saves a candidate before configure applies it')
     p.add_argument('--modules',help='Comma-separated optional modules: '+','.join(MODULES))
     p.add_argument('--apply',action='store_true',help='Perform the displayed action; otherwise show a plan')
@@ -26,16 +26,26 @@ def parser():
     p.add_argument('--name',choices=[*KEYS,'transcription'],help='Feature to change')
     toggle=p.add_mutually_exclusive_group();toggle.add_argument('--enable',action='store_true');toggle.add_argument('--disable',action='store_true')
     p.add_argument('--gain-db',type=float);p.add_argument('--read-level',type=int);p.add_argument('--write-level',type=int)
+    p.add_argument('--format',choices=['text','json','html'],default='text',help='Status/doctor report format')
+    p.add_argument('--domain',help='Existing SIP domain to scan; discovered automatically when unique')
+    p.add_argument('--database',help='Database name for status/doctor discovery')
     return p
+
+def print_result(result):
+    if result is not None: print(result if isinstance(result,str) else json.dumps(result,indent=2))
 
 def menu():
     print('PBX maintenance — Debian 13 Trixie')
-    choices=['setup','install','configure','feature','backup','restore','check','update','firewall']
+    choices=['status','doctor','setup','install','configure','feature','backup','restore','check','update','firewall']
     for n,x in enumerate(choices,1):print(str(n)+'. '+x)
     answer=input('Choose an operation (Enter exits): ').strip()
     if not answer:return
     need(answer.isdigit() and 1<=int(answer)<=len(choices),'Invalid choice')
     action=choices[int(answer)-1];args=[action]
+    if action in ('status','doctor'):
+        domain=input('SIP domain (Enter discovers a single domain): ').strip()
+        if domain: args+=['--domain',domain]
+        print_result(main(args));return
     candidate=Path('/root/pbxctl-site.json') if CONFIG.exists() else Path('site.json')
     default=candidate if action=='setup' or candidate.exists() else CONFIG if CONFIG.exists() else SOURCE/'site.example.json'
     args+=['--config',input('Site configuration file ['+str(default)+']: ').strip() or str(default)]
@@ -57,11 +67,11 @@ def menu():
     if action=='update' and input('Update PBX or toolkit? [pbx]: ').strip()=='tool':
         args+=['--target','tool','--source',input('Downloaded toolkit release directory: ').strip()]
     result=main(args)
-    if result is not None:print(json.dumps(result,indent=2))
+    print_result(result)
     if action not in ('setup','check') and input('Apply this operation? Type APPLY: ').strip()=='APPLY':
         if action in ('configure','feature','update') and input('Allow an idle service restart? y/N: ').lower()=='y':args+=['--allow-restart']
         result=main(args+['--apply'])
-        if result is not None:print(json.dumps(result,indent=2))
+        print_result(result)
 
 def media(uuid):
     import re
@@ -79,6 +89,16 @@ def media(uuid):
 def main(argv=None):
     a=parser().parse_args(argv)
     if a.action=='menu':return menu()
+    if a.action in ('status','doctor'):
+        need(not a.apply,'Status and doctor are read-only; omit --apply')
+        from lib import base, diagnostics
+        base.supported()
+        source=Path(a.config) if a.config else CONFIG if CONFIG.exists() else None
+        c=load_config(source) if source else None
+        report=diagnostics.Scanner(c,domain=a.domain,database=a.database,source=str(source) if source else None).collect()
+        if a.format=='json':return report
+        if a.format=='html':return diagnostics.render_html(report)
+        return diagnostics.render_text(report,diagnose=a.action=='doctor')
     if a.action=='setup':
         candidate=Path(a.config) if a.config else Path('/root/pbxctl-site.json') if CONFIG.exists() else Path('site.json')
         need(candidate.resolve()!=CONFIG.resolve(),'Save a candidate file, then apply it with configure --config PATH')
@@ -193,6 +213,6 @@ def dispatch(a,c,mods):
 if __name__=='__main__':
     try:
         result=main()
-        if result is not None:print(json.dumps(result,indent=2))
+        print_result(result)
     except (Error,OSError,ValueError,KeyError,RuntimeError) as e:
         print('Stopped: '+(str(e) if isinstance(e,Error) else type(e).__name__+'; inspect local prerequisites'),file=sys.stderr);sys.exit(1)
