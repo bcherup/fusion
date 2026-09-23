@@ -77,6 +77,7 @@ def hardening(db,c,ch):
     p=profile(db,c['internal_profile'])
     for k,v in {'auth-calls':'true','accept-blind-auth':'false','accept-blind-reg':'false',
                 'inbound-reg-force-matching-username':'true','challenge-realm':'auto_to','context':'public',
+                'aggressive-nat-detection':'true',
                 'sip-ip':c['lan_ip'],'rtp-ip':c['lan_ip'],'ext-sip-ip':'host:'+c['nat_hostname'],
                 'ext-rtp-ip':'host:'+c['nat_hostname'],'tls':'true','tls-only':'false',
                 'tls-sip-port':str(c['tls_port']),'tls-version':'tlsv1.2,tlsv1.3',

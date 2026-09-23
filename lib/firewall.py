@@ -20,6 +20,8 @@ def rules(c,family,accept=False):
     if family==4:
         for network in c['provider_cidrs']:
             for proto in ('tcp','udp'):out+=[['-s',network,'-p',proto,'--dport',str(c['trunk_port']),'-j',verdict]]
+            if c.get('carrier_tls',{}).get('enabled'):
+                out+=[['-s',network,'-p','tcp','--dport',str(c['carrier_tls']['listen_port']),'-j',verdict]]
         out+=[['-p','tcp','--dport',str(c['tls_port']),'-j',verdict],['-p','udp','--dport',f"{c['rtp_start']}:{c['rtp_end']}",'-j',verdict]]
     return out+[['-j','DROP']]
 

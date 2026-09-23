@@ -7,13 +7,14 @@ from pathlib import Path
 import sys
 sys.dont_write_bytecode=True
 from lib.common import CONFIG, ROOT, STATE, Error, atomic, idle, need, run
-from lib.config import MODULES, load_config, prompt_secret, selected, wizard
+from lib.config import MODULES, load_config, prompt_secret, selected, wizard, validate_all
+from lib.features import KEYS
 
 SOURCE=Path(__file__).resolve().parent
 
 def parser():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action',nargs='?',default='menu',choices=['menu','setup','plan','install','deploy','configure','certificate','smtp-credential','test-email','backup','verify-backup','restore','activate','migrate','check','check-media','firewall','update','offsite-init','offsite-upload','offsite-restore','retention','rollback'])
+    p.add_argument('action',nargs='?',default='menu',choices=['menu','setup','plan','install','deploy','configure','feature','certificate','smtp-credential','test-email','backup','verify-backup','restore','activate','migrate','check','check-media','firewall','update','offsite-init','offsite-upload','offsite-restore','retention','rollback','restore-summary-text'])
     p.add_argument('--config',help='Site configuration; setup saves a candidate before configure applies it')
     p.add_argument('--modules',help='Comma-separated optional modules: '+','.join(MODULES))
     p.add_argument('--apply',action='store_true',help='Perform the displayed action; otherwise show a plan')
@@ -22,11 +23,14 @@ def parser():
     p.add_argument('--target',choices=['pbx','tool'],default='pbx');p.add_argument('--fetch',action='store_true')
     p.add_argument('--confirm');p.add_argument('--snapshot',default='latest');p.add_argument('--agree-acme-tos',action='store_true')
     p.add_argument('--ssh-user',default='root');p.add_argument('--ssh-host');p.add_argument('--ssh-port',type=int,default=22)
+    p.add_argument('--name',choices=[*KEYS,'transcription'],help='Feature to change')
+    toggle=p.add_mutually_exclusive_group();toggle.add_argument('--enable',action='store_true');toggle.add_argument('--disable',action='store_true')
+    p.add_argument('--gain-db',type=float);p.add_argument('--read-level',type=int);p.add_argument('--write-level',type=int)
     return p
 
 def menu():
     print('PBX maintenance — Debian 13 Trixie')
-    choices=['setup','install','configure','backup','restore','check','update','firewall']
+    choices=['setup','install','configure','feature','backup','restore','check','update','firewall']
     for n,x in enumerate(choices,1):print(str(n)+'. '+x)
     answer=input('Choose an operation (Enter exits): ').strip()
     if not answer:return
@@ -38,13 +42,24 @@ def menu():
     if action in ('configure','install'):
         print('Optional modules: '+', '.join(MODULES));mods=input('Modules to configure (empty skips): ').strip()
         if mods:args+=['--modules',mods]
+    if action=='feature':
+        print('Features: '+', '.join([*KEYS,'transcription']))
+        name=input('Feature: ').strip();args+=['--name',name]
+        args+=['--enable' if input('Enable or disable? [enable]: ').strip()!='disable' else '--disable']
+        if name=='hold-music':
+            value=input('Gain dB (Enter keeps configured value): ').strip()
+            if value:args+=['--gain-db',value]
+        if name=='call-volume':
+            for flag in ('--read-level','--write-level'):
+                value=input(flag+' -4 to 4 (Enter keeps configured value): ').strip()
+                if value:args+=[flag,value]
     if action=='restore':args+=['--archive',input('Recovery directory: ').strip()]
     if action=='update' and input('Update PBX or toolkit? [pbx]: ').strip()=='tool':
         args+=['--target','tool','--source',input('Downloaded toolkit release directory: ').strip()]
     result=main(args)
     if result is not None:print(json.dumps(result,indent=2))
     if action not in ('setup','check') and input('Apply this operation? Type APPLY: ').strip()=='APPLY':
-        if action in ('configure','update') and input('Allow an idle service restart? y/N: ').lower()=='y':args+=['--allow-restart']
+        if action in ('configure','feature','update') and input('Allow an idle service restart? y/N: ').lower()=='y':args+=['--allow-restart']
         result=main(args+['--apply'])
         if result is not None:print(json.dumps(result,indent=2))
 
@@ -53,11 +68,11 @@ def media(uuid):
     need(uuid and re.fullmatch(r'[0-9a-fA-F-]{36}',uuid),'Provide the active test-call UUID')
     result={}
     need(run(['fs_cli','-x','uuid_exists '+uuid]).stdout.strip()=='true','Call is no longer active')
-    for key in ('rtp_secure_audio_confirmed','rtp_secure_media_negotiated','read_codec','write_codec'):
+    for key in ('rtp_secure_audio_confirmed','rtp_has_crypto','sofia_profile_name','read_codec','write_codec'):
         value=run(['fs_cli','-x','uuid_getvar '+uuid+' '+key]).stdout.strip()
         need(len(value)<120 and '\n' not in value,'Unexpected channel metadata')
         result[key]=None if value in ('_undef_','') else value
-    result['encrypted_audio_confirmed']=result['rtp_secure_audio_confirmed']=='true' and bool(result['rtp_secure_media_negotiated'])
+    result['encrypted_audio_confirmed']=result['rtp_secure_audio_confirmed']=='true'
     result['scope']='Selected call leg only; test incoming/push and carrier legs separately'
     return result
 
@@ -70,8 +85,18 @@ def main(argv=None):
         return wizard(candidate,CONFIG if CONFIG.exists() else SOURCE/'site.example.json')
     if not a.config:a.config=str(CONFIG if CONFIG.exists() else Path('site.json') if Path('site.json').exists() else SOURCE/'site.example.json')
     c=load_config(a.config);mods=selected(a.modules) if a.modules else []
+    if a.action=='feature':
+        need(a.name and (a.enable or a.disable),'Choose --name and --enable or --disable')
+        need(a.gain_db is None or a.name=='hold-music','--gain-db requires hold-music')
+        need((a.read_level is None and a.write_level is None) or a.name=='call-volume','Call gain flags require call-volume')
+        if a.name=='transcription':c['transcription_enabled']=a.enable
+        else:c[KEYS[a.name]]['enabled']=a.enable
+        if a.gain_db is not None:c['hold_music']['gain_db']=a.gain_db
+        for attr in ('read_level','write_level'):
+            if getattr(a,attr) is not None:c['call_volume'][attr]=getattr(a,attr)
+        c=validate_all(c);mods=[a.name];a.action='configure'
     if a.action=='plan':return {'os':'Debian 13 Trixie','selected':mods,'available':MODULES,'smtp':'Generic STARTTLS/implicit TLS or authorized relay','transcription':'Optional; no Whisper download when skipped','update':'Explicit PBX fast-forward or separately verified toolkit release','changes':False}
-    if a.action in ('install','deploy','configure','certificate','restore','activate','migrate','offsite-init','offsite-upload','offsite-restore','retention','rollback') and not a.apply:
+    if a.action in ('install','deploy','configure','certificate','restore','activate','migrate','offsite-init','offsite-upload','offsite-restore','retention','rollback','restore-summary-text') and not a.apply:
         result={'action':a.action,'modules':mods,'domain':c['domain'],'apply_required':True}
         if a.action=='configure':result['proposed']={m:__import__('lib.config',fromlist=['module_config']).module_config(c,m) for m in mods}
         if a.action in ('restore','verify-backup'):result['archive']=a.archive
@@ -92,6 +117,10 @@ def dispatch(a,c,mods):
         return result
     if a.action=='deploy':return operations.deploy(SOURCE,c)
     if a.action=='configure':need(mods,'Select at least one --modules value');return operations.configure(c,mods,a.allow_restart)
+    if a.action=='restore-summary-text':
+        need(not c['ai_summary']['enabled'],'Disable AI summaries before restoring original transcripts')
+        run(['runuser','-u',c['service_user'],'--','php',ROOT/'assets/ai/restore-summaries.php'])
+        return {'restored':'Only unchanged generated summaries; manual edits preserved'}
     if a.action=='smtp-credential':prompt_secret(c['smtp']['password_file'],'SMTP password or provider app password');return {'saved':True}
     if a.action=='test-email':
         need(a.apply,'Use --apply to send a test email to the configured recipient')
