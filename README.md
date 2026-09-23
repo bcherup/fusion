@@ -1,8 +1,26 @@
 # PBX Toolkit
 
-A neutral command-line installer and configurator for **Debian 13 Trixie**, FusionPBX, and FreeSWITCH. Run `python3 pbxctl.py` for the menu, or use explicit commands for repeatable administration.
+A neutral installer and configurator for **Debian 13 Trixie**, FusionPBX, and FreeSWITCH. Run `python3 pbxctl.py` in an interactive SSH terminal for the full-screen console, or use explicit commands for repeatable administration.
 
 This is a **review release**. Offline safety/behavior and adapter HTTP tests are included, along with Debian/PostgreSQL CI. The read-only scanner has been exercised on an existing Debian 13 PBX. Full toolkit configuration, a complete new-VM installation, real carrier call testing, SMTP delivery, remote storage, and a replacement-server recovery drill remain required before treating every path as production-proven.
+
+## Interactive console
+
+Run as root in an SSH terminal:
+
+```sh
+python3 pbxctl.py
+```
+
+The console scans the server on entry, then stays open between operations. Use **Up/Down and Enter** to select, **Esc or Q** to return, and **Page Up/Page Down** to scroll. Number keys move to the corresponding menu choice; Enter opens it. Resize the terminal to at least 60 columns and 18 rows; wider terminals show a second pane with descriptions. Only the standard Python curses module is required.
+
+The main menu has System overview, Recommendations, Audio and hold music, Security and connectivity, Voicemail and email, Backups and recovery, Updates and maintenance, Install and configure, Export, Refresh, and domain selection. Configuration editors show saved preferences, explain units and scope, and save a separate draft. Module selection uses checkboxes. Leaving an editor with Esc discards its unsaved edits.
+
+Every PBX change has a review screen and an explicit Apply choice; Cancel is selected by default. Operations needing restarts also require an idle-maintenance acknowledgment. Selecting or editing a site file does not apply it. Reports are exported with private permissions and existing files are never overwritten. SMTP credentials use a private terminal prompt, not a report field. The console does not automatically fix findings.
+
+For an existing site, pass `--config /path/to/site.json`. Optional `--domain` and `--database` scope the scan; changes are refused if those overrides conflict with the selected site file. A fresh draft uses discovered domain/LAN values where available and requires trusted management networks to be entered explicitly. Before applying modules on an existing PBX, deploy the toolkit through Install and configure.
+
+For pipes or automation, use `status --format text` or `status --format json`; full-screen mode requires an interactive terminal. If terminal detection fails in a compatible SSH client, try `TERM=xterm-256color python3 pbxctl.py`.
 
 ## Operations
 

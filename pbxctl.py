@@ -34,44 +34,10 @@ def parser():
 def print_result(result):
     if result is not None: print(result if isinstance(result,str) else json.dumps(result,indent=2))
 
-def menu():
-    print('PBX maintenance — Debian 13 Trixie')
-    choices=['status','doctor','setup','install','configure','feature','backup','restore','check','update','firewall']
-    for n,x in enumerate(choices,1):print(str(n)+'. '+x)
-    answer=input('Choose an operation (Enter exits): ').strip()
-    if not answer:return
-    need(answer.isdigit() and 1<=int(answer)<=len(choices),'Invalid choice')
-    action=choices[int(answer)-1];args=[action]
-    if action in ('status','doctor'):
-        domain=input('SIP domain (Enter discovers a single domain): ').strip()
-        if domain: args+=['--domain',domain]
-        print_result(main(args));return
-    candidate=Path('/root/pbxctl-site.json') if CONFIG.exists() else Path('site.json')
-    default=candidate if action=='setup' or candidate.exists() else CONFIG if CONFIG.exists() else SOURCE/'site.example.json'
-    args+=['--config',input('Site configuration file ['+str(default)+']: ').strip() or str(default)]
-    if action in ('configure','install'):
-        print('Optional modules: '+', '.join(MODULES));mods=input('Modules to configure (empty skips): ').strip()
-        if mods:args+=['--modules',mods]
-    if action=='feature':
-        print('Features: '+', '.join([*KEYS,'transcription']))
-        name=input('Feature: ').strip();args+=['--name',name]
-        args+=['--enable' if input('Enable or disable? [enable]: ').strip()!='disable' else '--disable']
-        if name=='hold-music':
-            value=input('Gain dB (Enter keeps configured value): ').strip()
-            if value:args+=['--gain-db',value]
-        if name=='call-volume':
-            for flag in ('--read-level','--write-level'):
-                value=input(flag+' -4 to 4 (Enter keeps configured value): ').strip()
-                if value:args+=[flag,value]
-    if action=='restore':args+=['--archive',input('Recovery directory: ').strip()]
-    if action=='update' and input('Update PBX or toolkit? [pbx]: ').strip()=='tool':
-        args+=['--target','tool','--source',input('Downloaded toolkit release directory: ').strip()]
-    result=main(args)
-    print_result(result)
-    if action not in ('setup','check') and input('Apply this operation? Type APPLY: ').strip()=='APPLY':
-        if action in ('configure','feature','update') and input('Allow an idle service restart? y/N: ').lower()=='y':args+=['--allow-restart']
-        result=main(args+['--apply'])
-        print_result(result)
+def menu(config=None,domain=None,database=None):
+    from lib.console import launch
+    return launch(main,SOURCE,config,domain,database)
+
 
 def media(uuid):
     import re
@@ -88,7 +54,7 @@ def media(uuid):
 
 def main(argv=None):
     a=parser().parse_args(argv)
-    if a.action=='menu':return menu()
+    if a.action=='menu':return menu(a.config,a.domain,a.database)
     if a.action in ('status','doctor'):
         need(not a.apply,'Status and doctor are read-only; omit --apply')
         from lib import base, diagnostics
