@@ -161,8 +161,30 @@ class Screen:
             except self.c.error:pass
 
     def confirm(self, title, text):
-        return self.select(title,[('cancel','Cancel','Return without applying this operation.'),
-                                  ('apply','Apply this operation',text)],text)=='apply'
+        selected=False;offset=0
+        while True:
+            h,w=self.frame(title,'Left/Right choose  |  Enter confirm  |  Up/Down scroll  |  Esc cancel')
+            if h<18 or w<60:
+                self.put(6,2,'Resize the terminal to at least 60 columns and 18 rows.')
+                self.w.refresh();key=self.w.getch()
+                if key in (27,ord('q'),ord('Q')):return False
+                continue
+            lines=wrap_lines(text,w-8);size=max(1,h-13)
+            offset=max(0,min(offset,len(lines)-size))
+            for n,line in enumerate(lines[offset:offset+size]):self.put(6+n,4,line)
+            self.put(h-6,4,f'Review {offset+1}-{min(len(lines),offset+size)} of {len(lines)} lines',self.c.A_DIM)
+            self.put(h-5,4,'  Cancel  ',self.selected if not selected else 0)
+            self.put(h-5,19,'  Apply  ',self.selected if selected else 0)
+            self.w.refresh();key=self.w.getch()
+            if key in (27,ord('q'),ord('Q')):return False
+            if key in (10,13,self.c.KEY_ENTER):return selected
+            if key in (self.c.KEY_LEFT,self.c.KEY_RIGHT,9):selected=not selected
+            elif key==self.c.KEY_DOWN:offset+=1
+            elif key==self.c.KEY_UP:offset-=1
+            elif key==self.c.KEY_NPAGE:offset+=size
+            elif key==self.c.KEY_PPAGE:offset-=size
+            elif key==self.c.KEY_HOME:offset=0
+            elif key==self.c.KEY_END:offset=len(lines)
 
     def external(self, operation):
         self.c.def_prog_mode();self.c.endwin()

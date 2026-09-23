@@ -143,6 +143,19 @@ class ConsoleTests(unittest.TestCase):
         self.app(ui,runner).simple_volume('call-volume')
         self.assertEqual(runner.call_args_list[1].args[0][-4:],['--read-level','-2','--write-level','-1'])
 
+    def test_confirmation_is_readable_at_80_columns_and_defaults_to_cancel(self):
+        constants={name:i+100 for i,name in enumerate(('KEY_UP','KEY_DOWN','KEY_LEFT','KEY_RIGHT','KEY_ENTER','KEY_NPAGE','KEY_PPAGE','KEY_HOME','KEY_END','A_DIM'))}
+        curses=type('Keys',(),constants)();window=Mock();window.getch.side_effect=[13]
+        screen=console.Screen.__new__(console.Screen);screen.w=window;screen.c=curses;screen.selected=1
+        screen.frame=Mock(return_value=(24,80));screen.put=Mock()
+        text='Current: -8 dB\nNew: -9 dB\nApplies to: Office music'
+        self.assertFalse(screen.confirm('Change volume?',text))
+        rendered=[call.args[2] for call in screen.put.call_args_list]
+        self.assertIn('Current: -8 dB',rendered);self.assertIn('New: -9 dB',rendered);self.assertIn('Applies to: Office music',rendered)
+        window.getch.side_effect=[curses.KEY_END,curses.KEY_RIGHT,13];screen.put.reset_mock()
+        self.assertTrue(screen.confirm('Long review','\n'.join('Line '+str(i) for i in range(50))))
+        self.assertIn('Line 49',[call.args[2] for call in screen.put.call_args_list])
+
     @unittest.skipUnless(os.name=='posix','Requires a Unix pseudo-terminal')
     def test_real_curses_arrow_navigation_and_terminal_restore(self):
         import fcntl
@@ -163,7 +176,11 @@ report=sample_report()
 def runner(args):
  assert args[0]=='status' and '--apply' not in args
  return report
-curses.wrapper(lambda w:Console(Screen(w,curses),runner,'.').run())
+def app(w):
+ screen=Screen(w,curses)
+ Console(screen,runner,'.').run()
+ assert screen.confirm('Volume review','Current: -8 dB\\nNew: -9 dB\\nApplies to: Office music')
+curses.wrapper(app)
 print('CONSOLE_EXIT_OK',flush=True)
 """
         process=subprocess.Popen([sys.executable,'-B','-c',code],stdin=slave,stdout=slave,stderr=slave,cwd=SOURCE,env={**os.environ,'TERM':'xterm-256color'})
@@ -177,12 +194,13 @@ print('CONSOLE_EXIT_OK',flush=True)
         until(b'Main menu')
         # Arrow keys in xterm application-cursor mode, then Enter.
         os.write(master,b'\x1bOB'*5+b'\r');until(b'Detailed audio settings')
-        os.write(master,b'\r');until(b'Audio and hold music')
+        os.write(master,b'\r');until(b'Current audio settings')
         os.write(master,b'\r');until(b'Evidence:')
         os.write(master,b'q');time.sleep(.15)
         os.write(master,b'q');time.sleep(.15)
         os.write(master,b'q');time.sleep(.15)
-        os.write(master,b'q');until(b'CONSOLE_EXIT_OK')
+        os.write(master,b'q');until(b'New: -9 dB')
+        os.write(master,b'\x1bOC\r');until(b'CONSOLE_EXIT_OK')
         self.assertEqual(process.wait(timeout=3),0)
         after=termios.tcgetattr(slave)
         self.assertEqual(after[3]&(termios.ECHO|termios.ICANON),before[3]&(termios.ECHO|termios.ICANON))
