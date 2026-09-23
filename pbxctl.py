@@ -14,7 +14,7 @@ SOURCE=Path(__file__).resolve().parent
 
 def parser():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action',nargs='?',default='menu',choices=['menu','setup','plan','install','deploy','configure','feature','certificate','smtp-credential','test-email','backup','verify-backup','restore','activate','migrate','check','check-media','status','doctor','volume','firewall','update','offsite-init','offsite-upload','offsite-restore','retention','rollback','restore-summary-text'])
+    p.add_argument('action',nargs='?',default='menu',choices=['menu','setup','plan','install','deploy','configure','feature','certificate','smtp-credential','test-email','backup','verify-backup','restore','activate','migrate','check','check-media','status','doctor','volume','job','active-media','firewall','update','offsite-init','offsite-upload','offsite-restore','retention','rollback','restore-summary-text'])
     p.add_argument('--config',help='Site configuration; setup saves a candidate before configure applies it')
     p.add_argument('--modules',help='Comma-separated optional modules: '+','.join(MODULES))
     p.add_argument('--apply',action='store_true',help='Perform the displayed action; otherwise show a plan')
@@ -23,7 +23,7 @@ def parser():
     p.add_argument('--target',choices=['pbx','tool'],default='pbx');p.add_argument('--fetch',action='store_true')
     p.add_argument('--confirm');p.add_argument('--snapshot',default='latest');p.add_argument('--agree-acme-tos',action='store_true')
     p.add_argument('--ssh-user',default='root');p.add_argument('--ssh-host');p.add_argument('--ssh-port',type=int,default=22)
-    p.add_argument('--name',choices=[*KEYS,'transcription'],help='Feature to change')
+    p.add_argument('--name',choices=[*KEYS,'transcription','alerts'],help='Feature to change')
     toggle=p.add_mutually_exclusive_group();toggle.add_argument('--enable',action='store_true');toggle.add_argument('--disable',action='store_true')
     p.add_argument('--gain-db',type=float);p.add_argument('--read-level',type=int);p.add_argument('--write-level',type=int)
     p.add_argument('--format',choices=['text','json','html'],default='text',help='Status/doctor report format')
@@ -56,6 +56,15 @@ def media(uuid):
 def main(argv=None):
     a=parser().parse_args(argv)
     if a.action=='menu':return menu(a.config,a.domain,a.database)
+    if a.action=='job':
+        from lib.job_control import execute
+        return execute(a)
+    if a.action=='active-media':
+        from lib.base import supported
+        supported();need(not a.apply,'Call inspection is read-only')
+        rows=json.loads(run(['fs_cli','-x','show channels as json']).stdout).get('rows',[])
+        need(len(rows)<=20,'More than 20 call legs are active; inspect an individual call from Advanced')
+        return [{'uuid':row['uuid'],**media(row['uuid'])} for row in rows]
     if a.action=='volume':
         from lib.quick_volume import execute
         if a.config:
@@ -78,6 +87,7 @@ def main(argv=None):
     if not a.config:a.config=str(CONFIG if CONFIG.exists() else Path('site.json') if Path('site.json').exists() else SOURCE/'site.example.json')
     c=load_config(a.config);mods=selected(a.modules) if a.modules else []
     if a.action=='feature':
+        need(a.name in (*KEYS,'transcription'),'Choose an available configurable feature')
         need(a.name and (a.enable or a.disable),'Choose --name and --enable or --disable')
         need(a.gain_db is None or a.name=='hold-music','--gain-db requires hold-music')
         need((a.read_level is None and a.write_level is None) or a.name=='call-volume','Call gain flags require call-volume')

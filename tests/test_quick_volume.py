@@ -147,5 +147,18 @@ class QuickVolumeTests(unittest.TestCase):
         self.assertNotIn('config',plan);self.assertNotIn('state',plan);self.assertIn('token',plan)
         self.db.dump.assert_not_called()
 
+    def test_measured_file_level_is_readable_without_a_saved_gain(self):
+        self.track.write_bytes(wav([16384,-16384]*100))
+        state=self.volume().current('hold-music')
+        self.assertIsNone(state['gain_db']);self.assertEqual(state['measured']['rms_dbfs'],-6.0)
+        self.assertEqual(state['measured']['peak_dbfs'],-6.0)
+        self.apply(gain=-3)
+        self.assertAlmostEqual(self.volume().current('hold-music')['measured']['rms_dbfs'],-9.0,places=1)
+        self.assertFalse(self.config.exists())
+
+    def test_silence_is_not_reported_as_zero_db_full_scale(self):
+        self.track.write_bytes(wav([0]*100));measured=self.volume().current('hold-music')['measured']
+        self.assertTrue(measured['silent']);self.assertIsNone(measured['rms_dbfs']);self.assertIsNone(measured['peak_dbfs'])
+
 
 if __name__=='__main__':unittest.main(verbosity=2)

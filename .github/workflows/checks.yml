@@ -25,6 +25,7 @@ jobs:
           python3 -B tests/test_diagnostics.py
           python3 -B tests/test_console.py
           python3 -B tests/test_quick_volume.py
+          python3 -B tests/test_daily.py
       - name: PHP syntax and adapter HTTP tests
         run: |
           python3 -c "from pathlib import Path; import subprocess; [subprocess.run(['php','-l',str(p)],check=True) for root in ('assets','tests') for p in Path(root).rglob('*.php')]"

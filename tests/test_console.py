@@ -20,7 +20,8 @@ class FakeUI:
     def __init__(self, selections=(), prompts=(), confirmations=()):
         self.selections=iter(selections);self.prompts=iter(prompts);self.confirmations=iter(confirmations)
         self.pages=[];self.context='';self.external=Mock(side_effect=lambda callback:callback())
-    def select(self,title,items,note=''):
+    def select(self,title,items,note='',summary=()):
+        self.pages.append((title,{'items':items,'summary':summary,'note':note}))
         key=next(self.selections)
         assert key is None or key in [x[0] for x in items],(title,key)
         return key
@@ -39,11 +40,11 @@ class ConsoleTests(unittest.TestCase):
         return console.Console(ui,runner or Mock(return_value=self.report),SOURCE,config=self.path)
 
     def test_navigation_returns_to_menu_and_only_scans(self):
-        ui=FakeUI(['advanced','audio','view',None,None,'overview','advanced','findings',None,'refresh','exit']);runner=Mock(return_value=self.report)
+        ui=FakeUI(['advanced','audio','view',None,None,'system','overview','findings','refresh',None,'exit']);runner=Mock(return_value=self.report)
         self.app(ui,runner).run()
         self.assertEqual(len(runner.call_args_list),2)
         self.assertTrue(all(c.args[0][0]=='status' and '--apply' not in c.args[0] for c in runner.call_args_list))
-        self.assertTrue(any('Audio' in p[0] for p in ui.pages));self.assertTrue(any(p[0]=='System overview' for p in ui.pages))
+        self.assertTrue(any('Audio' in p[0] for p in ui.pages));self.assertTrue(any(p[0]=='Observed system settings' for p in ui.pages))
 
     def test_cancel_after_preview_never_applies(self):
         ui=FakeUI(confirmations=[False]);runner=Mock(return_value={'action':'backup','apply_required':True})
@@ -192,8 +193,11 @@ print('CONSOLE_EXIT_OK',flush=True)
                 if select.select([master],[],[],0.1)[0]:data.extend(os.read(master,65536))
             self.assertIn(needle,data,bytes(data[-2000:]))
         until(b'Main menu')
+        os.write(master,b'\r');until(b'Change voice codecs')
+        until(b'Music adjustment:')
+        os.write(master,b'q');time.sleep(.15)
         # Arrow keys in xterm application-cursor mode, then Enter.
-        os.write(master,b'\x1bOB'*5+b'\r');until(b'Detailed audio settings')
+        os.write(master,b'\x1bOB'*7+b'\r');until(b'Detailed audio settings')
         os.write(master,b'\r');until(b'Current audio settings')
         os.write(master,b'\r');until(b'Evidence:')
         os.write(master,b'q');time.sleep(.15)

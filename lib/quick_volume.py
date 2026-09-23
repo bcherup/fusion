@@ -9,6 +9,7 @@ from . import features, operations
 from .common import CONFIG, STATE, Database, Change, Error, atomic, digest, hostname, invalidate, literal, need
 from .config import module_config, load_config
 from .diagnostics import bounded_json
+from .audio_level import measure, combine
 
 HELPER = Path('/usr/local/lib/pbxctl/call-volume.lua')
 SOURCE = Path(__file__).resolve().parents[1]
@@ -61,8 +62,10 @@ class Volume:
             if not files or len(files)>200:continue
             if not all(not p.is_symlink() and p.resolve().parent in paths for p in files):continue
             if sum(p.stat().st_size for p in files)>256*1024**2:continue
+            measurements=[measure(p) for p in files]
             result.append({'stream':stream,'directory':str(directory),'in_use':stream in used,'files':len(files),
-                           'fingerprint':hashlib.sha256(json.dumps([(str(p),digest(p)) for p in files]).encode()).hexdigest()})
+                           'measured':combine(measurements),
+                           'fingerprint':hashlib.sha256(json.dumps([(str(p),m['sha256']) for p,m in zip(files,measurements)]).encode()).hexdigest()})
         return sorted(result,key=lambda x:(not x['in_use'],x['stream']))
 
     def phones(self):
@@ -109,7 +112,7 @@ class Volume:
         need(len(profile)==1,'Phone profile could not be identified; select it in Advanced')
         if not saved['enabled']:saved['read_level']=saved['write_level']=0
         return {**saved,'recorded':bool(record),'record':record,'scope':'Phones '+', '.join(saved['extensions'])+'; answering destinations '+', '.join(saved['destinations']),
-                'label':f"Microphone {saved['read_level']:+d} / listening {saved['write_level']:+d} steps" if record else 'No toolkit adjustment; original PBX level',
+                'label':f"Microphone {saved['read_level']:+d} / listening {saved['write_level']:+d} steps",
                 'fingerprint':hashlib.sha256(json.dumps(saved,sort_keys=True).encode()).hexdigest()}
 
     def plan(self, name, stream=None, gain=None, read=None, write=None, restore=False):
