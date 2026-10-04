@@ -92,7 +92,7 @@ def audio_action(application, data):
     if application == 'bridge':
         m = re.search(r'(?:\{|,)rtp_secure_media_outbound=((?:mandatory|optional)(?::[A-Z0-9_:]+)?)(?:,|\})', data)
         if m: return ('Carrier outbound SRTP policy', m[1])
-    m = re.fullmatch(r'nolocal:execute_on_answer_pbxctl_volume=lua /opt/pbxctl/assets/call-volume.lua (-?[0-4]) (-?[0-4])', data)
+    m = re.fullmatch(r'nolocal:execute_on_answer_pbxctl_volume=lua (?:/opt/pbxctl/assets|/usr/local/lib/pbxctl)/call-volume.lua (-?[0-4]) (-?[0-4])', data)
     if m: return ('Answering phone gain', 'Microphone ' + m[1] + ' / listening ' + m[2] + ' steps')
     return None
 

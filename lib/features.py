@@ -85,7 +85,7 @@ def secure_calling(db, c, ch):
     return {'next': 'Set phone TLS and SDES; verify foreground, background and hold/resume. Optional permits RTP fallback.'}
 
 
-def call_volume(db, c, ch):
+def call_volume(db, c, ch, helper=None):
     s = c['call_volume']
     levels = [('set_audio_level', 'read ' + str(s['read_level'])),
               ('set_audio_level', 'write ' + str(s['write_level']))]
@@ -93,7 +93,7 @@ def call_volume(db, c, ch):
         ('${sofia_profile_name}', '^' + re.escape(c['internal_profile']) + '$', []),
         ('caller_id_number', number_expression(s['extensions']), levels)], s['enabled'], 88)
     # A distinct execute_on_answer suffix preserves existing application hooks.
-    hook = 'nolocal:execute_on_answer_pbxctl_volume=lua ' + str(ROOT / 'assets/call-volume.lua')
+    hook = 'nolocal:execute_on_answer_pbxctl_volume=lua ' + str(helper or ROOT / 'assets/call-volume.lua')
     hook += ' ' + str(s['read_level']) + ' ' + str(s['write_level'])
     rule(db, c, ch, 'PBX Toolkit answering phone gain', [
         ('destination_number', number_expression(s['destinations']), [('export', hook)])], s['enabled'], 89)
