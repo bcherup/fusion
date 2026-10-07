@@ -49,7 +49,7 @@
     "site.example.json": "a82e5fc95c30f65bc0d26997852b1bac2de7cab75391ba48f2ccabc422201a2b",
     "tests/test_adapter.php": "37bf694b54497ebd41e7f6a56d34f30cde49edadf539481ff9ba1779cfc52e25",
     "tests/test_adapter_http.py": "b13b34513e4f16bbd34292d7b439f897ad143f6fca57cc3f345683b4fc35c65b",
-    "tests/test_console.py": "cada6e9bf3b8f3f109870e95957cd25a1374acf79f89dd75602fdc75b6029714",
+    "tests/test_console.py": "e5c51d2dce39c8db9b4e116ccfc7026408dbc8881db630ac901513ad8bca84a4",
     "tests/test_daily.py": "3147bc2f53a54140c0f6be62b43303e43834a3cdc63b9cdb0c8d0a8dffab5be2",
     "tests/test_diagnostics.py": "5127e1c35fff4245f040cdbcc0dbf1a5ef127614d1ff14e4f5543e98d0c08516",
     "tests/test_features.py": "c6a538731add851518e5a0a0a8d59fc7788abe33ddf624f158253202dae608e0",
