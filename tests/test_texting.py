@@ -18,7 +18,7 @@ class TextingTests(unittest.TestCase):
         self.original='<include><context name="public"><extension name="unrelated"><condition field="to" expression="^help$"><action application="log" data="notice"/></condition></extension></context></include>\n'
         self.path.write_text(self.original)
         self.change=Mock()
-        self.change.file.side_effect=lambda path,data:Path(path).write_text(data)
+        self.change.file.side_effect=lambda path,data,*args:Path(path).write_text(data)
         self.on={'enabled':True,'extensions':['1000','1005']}
 
     def test_scoped_route_and_disable_preserves_unrelated_entry(self):

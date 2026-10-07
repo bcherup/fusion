@@ -73,5 +73,7 @@ def change_chatplan(path, domain, profile, settings, change):
         ET.SubElement(condition, 'action', {'application': 'send', 'data': 'sip'})
         context.insert(0, extension)
     elif owned is None:return False
-    change.file(path, ET.tostring(tree.getroot(), encoding='unicode') + '\n')
+    st=Path(path).stat()
+    change.file(path, ET.tostring(tree.getroot(), encoding='unicode') + '\n',
+                st.st_mode & 0o777, (st.st_uid,st.st_gid))
     return True
