@@ -14,6 +14,7 @@ from .common import STATE, ROOT, Error, atomic, digest, literal, need, run
 from . import pbx
 
 DEFAULTS = {
+    'internal_chat': {'enabled': False, 'extensions': []},
     'secure_calling': {'enabled': False, 'destinations': ['1000', '600'], 'mode': 'optional'},
     'carrier_tls': {'enabled': False, 'gateway_uuid': '', 'route_uuid': '',
                     'host': 'sip.telnyx.com', 'server_port': 5061, 'listen_port': 5081,
@@ -23,9 +24,31 @@ DEFAULTS = {
                     'read_level': 0, 'write_level': 0},
     'ai_summary': {'enabled': False, 'port': 18081, 'cpu_percent': 50, 'memory_mb': 1500},
 }
-KEYS = {'secure-calling': 'secure_calling', 'carrier-tls': 'carrier_tls',
+KEYS = {'internal-chat': 'internal_chat', 'secure-calling': 'secure_calling', 'carrier-tls': 'carrier_tls',
         'hold-music': 'hold_music', 'call-volume': 'call_volume', 'ai-summary': 'ai_summary'}
 MUSIC_ROOT = Path('/usr/share/freeswitch/sounds/music')
+
+
+def internal_chat(db, c, ch):
+    """Route authenticated SIP MESSAGE only between selected local extensions."""
+    from .texting import change_chatplan
+    if c['internal_chat']['enabled']:
+        rows = db.rows('SELECT extension FROM v_extensions WHERE domain_uuid=' +
+                       literal(pbx.domain(db, c)) + ' AND extension IN (' +
+                       ','.join(literal(x) for x in c['internal_chat']['extensions']) + ')')
+        need({r['extension'] for r in rows} == set(c['internal_chat']['extensions']),
+             'One or more selected chat extensions do not exist in this domain')
+    settings = db.rows('SELECT * FROM v_sip_profile_settings WHERE sip_profile_uuid=' +
+                       literal(pbx.profile(db, c['internal_profile'])) +
+                       " AND sip_profile_setting_name='auth-messages'")
+    need(len(settings) <= 1, 'Duplicate auth-messages setting')
+    if c['internal_chat']['enabled'] and not (settings and settings[0]['sip_profile_setting_enabled'] and
+                                              settings[0]['sip_profile_setting_value'] == 'true'):
+        pbx.setting(db, ch, pbx.profile(db, c['internal_profile']), 'auth-messages', 'true')
+    changed = change_chatplan(Path(c['freeswitch_conf']) / 'chatplan/default.xml',
+                              c['domain'], c['internal_profile'], c['internal_chat'], ch)
+    return {'chatplan_changed': changed, 'restart_profile': c['internal_profile'] if c['internal_chat']['enabled'] else None,
+            'next': 'Send a SIP chat between two selected, registered phones. Carrier SMS uses a separate provider integration.'}
 
 
 def tls_listener_ports(c):

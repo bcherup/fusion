@@ -10,7 +10,7 @@ from . import base, mail, pbx, recovery, services
 from . import features
 
 # Reapply changed module defaults when explicitly selected after a tool upgrade.
-MODULE_REVISIONS={'hardening':2}
+MODULE_REVISIONS={'hardening':3}
 
 MODULE_UNITS={
     'backup':['pbxctl-backup.service'],
@@ -81,7 +81,7 @@ def configure(c,modules,allow_restart=False):
     need((ROOT/'VERSION').exists(),'Deploy the toolkit first')
     for p in (STATE,CONFIG.parent):p.mkdir(mode=0o755,parents=True,exist_ok=True)
     pbx.domain(db,c)
-    if any(m in modules for m in ('hardening','audio','carrier-tls')):
+    if any(m in modules for m in ('hardening','audio','carrier-tls')) or ('internal-chat' in modules and c['internal_chat']['enabled']):
         need(allow_restart,'These modules require --allow-restart during an idle window');idle()
     if 'hardening' in modules:need(c['provider_cidrs'],'Enter verified carrier /32 addresses before hardening')
     previous_config=json.loads(CONFIG.read_text()) if CONFIG.exists() else None
@@ -139,7 +139,7 @@ def configure(c,modules,allow_restart=False):
                 if previous_config is not None:atomic(CONFIG,json.dumps(previous_config,indent=2)+'\n',0o644)
                 else:CONFIG.unlink(missing_ok=True)
                 rollback_change(ch);raise
-        if any(m in modules for m in ('audio','hardening','smtp','transcription','secure-calling','carrier-tls','call-volume')):
+        if any(m in modules for m in ('audio','hardening','smtp','transcription','internal-chat','secure-calling','carrier-tls','call-volume')):
             invalidate(c,['configuration:sofia.conf','configuration:acl.conf','dialplan:'+c['domain'],'settings:'+c['domain'],'directory:'+c['mailbox']+'@'+c['domain']])
         if 'hardening' in modules:run(['fail2ban-client','reload'])
         if restart:idle();run(['systemctl','restart','freeswitch'],timeout=120)
@@ -165,7 +165,7 @@ def configure(c,modules,allow_restart=False):
             if before_marker is None:marker.unlink(missing_ok=True)
             else:atomic(marker,before_marker)
         run(['systemctl','daemon-reload'],check=False)
-        if completed and any(m in modules for m in ('audio','hardening','secure-calling','carrier-tls','call-volume')):
+        if completed and any(m in modules for m in ('audio','hardening','internal-chat','secure-calling','carrier-tls','call-volume')):
             invalidate(c,['configuration:sofia.conf','configuration:acl.conf','dialplan:'+c['domain']])
             if restart:
                 idle();run(['systemctl','restart','freeswitch'],timeout=120)
