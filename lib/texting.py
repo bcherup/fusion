@@ -16,6 +16,17 @@ def expression(domain, profile, extensions):
     return '^' + re.escape(profile) + r'\|' + group + r'\|' + group + '@' + re.escape(domain) + '$'
 
 
+def equivalent_expression(actual, domain, profile, extensions):
+    if actual == expression(domain,profile,extensions):return True
+    numbers=sorted(set(extensions))
+    width=len(numbers[0]);prefix=numbers[0][:-1]
+    if not all(len(x)==width and x[:-1]==prefix for x in numbers):return False
+    digits=[int(x[-1]) for x in numbers]
+    if digits!=list(range(digits[0],digits[-1]+1)):return False
+    compact=re.escape(prefix)+'['+str(digits[0])+'-'+str(digits[-1])+']'
+    return actual=='^'+re.escape(profile)+r'\|'+compact+r'\|'+compact+'@'+re.escape(domain)+'$'
+
+
 def inspect_chatplan(path):
     path = Path(path)
     need(path.is_file() and not path.is_symlink(), 'Chatplan file missing or linked: ' + str(path))
@@ -47,7 +58,7 @@ def change_chatplan(path, domain, profile, settings, change):
     if not enabled:need(not other, 'An existing custom chat route is still active; review it before disabling chat')
     if enabled:
         # A second send route can bypass the extension allowlist. Preserve it for review.
-        need(not other or len(other) == 1 and route_expression(other[0]) == desired,
+        need(not other or len(other) == 1 and equivalent_expression(route_expression(other[0]),domain,profile,settings['extensions']),
              'Another SIP chat route exists. Review it before enabling toolkit routing.')
         if other:
             need(owned is None, 'A toolkit route and another SIP route both exist; review before changing')

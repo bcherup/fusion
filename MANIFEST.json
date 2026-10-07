@@ -39,7 +39,7 @@
     "lib/quick_volume.py": "cc1e055a325acb67fc102ceff642161a217318e53979d1faa64a7468697eb9e0",
     "lib/recovery.py": "285e882ede3a20bd118b76d6d8e5169957516c48388cfae33fb81eef386af065",
     "lib/services.py": "6149bcac5bfbeb6c2e0fc4960235df8ca7a301fba12466a2de3c848363230aee",
-    "lib/texting.py": "75606d0f1343c3fbbcbdfa844d043454159bc05d1f6ccbfb656573d344e9d7c2",
+    "lib/texting.py": "4328b9d8c508d7efd0f30b9e5ced34b29d7fc5544fa93d90a05e6a842865f168",
     "lib/updates.py": "4d151f73cbf9875b1f100ddab5c1237fc52dd0fd4f88c71a8fb10e2707f7d7f0",
     "LICENSE": "332da2dd1cdc1d7d65fc7221813aad784670e0a5f44df11986579dab564f65ad",
     "migrate-new-pbx.sh": "bd348638b621b27bfe1e5ada1a9b8457ca85b04140b9243d160ebc786167b116",
@@ -56,7 +56,7 @@
     "tests/test_postgres.py": "969953298ecfc7be1673e7ca8a091104406311358c7729c3ad336bab703b8a4a",
     "tests/test_quick_volume.py": "953c5b325c816496e5af72c0ffb1f2c7514e3b0fedcf9696b81dc087ae3b9935",
     "tests/test_summary.php": "27ef4e88423de1b105e2868420556762918a03bb52d256b8712142b866a00802",
-    "tests/test_texting.py": "c34be18384586730040d27b973476a79b77e7f1ed8972952a0d64a1b311febdf",
+    "tests/test_texting.py": "53f230bf441fa5aa773d0986e75e6001ad0f7ee33b3820c05d1b42f990c441c9",
     "tests/test_toolkit.py": "f7d09cce778678097f67d227e770ee86e39338025619e3009497019c4d2261aa",
     "tools/package.py": "d95dc588ea1467f675e45aad15e1f86476441ca36d6e409b5a169940b3922628",
     "VERSION": "aba951626c8690ce493cbc8f018205bb468003f61fbf00fd3d3c71cebabc0177"

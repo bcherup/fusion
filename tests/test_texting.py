@@ -8,7 +8,7 @@ from unittest.mock import Mock
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from lib.common import Error
 from lib.config import load_config, validate_all
-from lib.texting import ROUTE, change_chatplan, inspect_chatplan, route_expression
+from lib.texting import ROUTE, change_chatplan, inspect_chatplan, route_expression, equivalent_expression
 
 
 class TextingTests(unittest.TestCase):
@@ -57,6 +57,21 @@ class TextingTests(unittest.TestCase):
         self.assertIsNotNone(inspect_chatplan(self.path)[2])
         self.assertTrue(change_chatplan(self.path,'voip.example.com','internal',{'enabled':False,'extensions':[]},self.change))
         self.assertEqual(len(inspect_chatplan(self.path)[3]),0)
+
+    def test_compact_existing_range_can_be_adopted_only_for_exact_set(self):
+        old=r'^internal\|100[0-5]\|100[0-5]@voip\.example\.com$'
+        allowed=[str(x) for x in range(1000,1006)]
+        self.assertTrue(equivalent_expression(old,'voip.example.com','internal',allowed))
+        self.assertFalse(equivalent_expression(old,'voip.example.com','internal',allowed[:-1]))
+        self.assertFalse(equivalent_expression(old,'other.example.com','internal',allowed))
+        from lib.texting import FIELD
+        root=ET.Element('include');ctx=ET.SubElement(root,'context',{'name':'public'})
+        legacy=ET.SubElement(ctx,'extension',{'name':'local-extension-message'})
+        condition=ET.SubElement(legacy,'condition',{'field':FIELD,'expression':old})
+        ET.SubElement(condition,'action',{'application':'send','data':'sip'})
+        self.path.write_text(ET.tostring(root,encoding='unicode'))
+        self.assertTrue(change_chatplan(self.path,'voip.example.com','internal',{'enabled':True,'extensions':allowed},self.change))
+        self.assertIsNotNone(inspect_chatplan(self.path)[2])
 
     def test_older_site_defaults_off_and_requires_two_extensions(self):
         source=Path(__file__).resolve().parents[1]/'site.example.json'
