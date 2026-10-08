@@ -71,6 +71,7 @@ class Current:
         if area=='security':
             tls=self.values('profiles',lambda r:r['item'].endswith('/ TLS listener port'))
             return [('TLS listeners',', '.join(tls) or 'Not verified'),('Audio policy',self.policy()),('Active-call encryption','Check a call to verify each leg')]
+        if area=='texting':return [('Local phone chat',self.value('messaging','Local phone chat')),('MESSAGE authentication',self.value('messaging','Phone MESSAGE authentication')),('Carrier SMS','Separate provider setup')]
         if area=='updates':return [('Installed revision',self.value('updates','Application revision')),('Local edits',self.value('updates','Tracked local changes')),('Upstream comparison',self.value('updates','Cached upstream comparison')),('Freshness','Cached result; choose Check for updates')]
         return [('Active calls',self.value('services','Active calls')),('Free disk',self.value('services','Free disk')),('Detected issues',str(self.report.get('counts',{}).get('error','?'))+' errors / '+str(self.report.get('counts',{}).get('warning','?'))+' warnings')]
 

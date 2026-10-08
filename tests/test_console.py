@@ -197,7 +197,7 @@ print('CONSOLE_EXIT_OK',flush=True)
         until(b'Music adjustment:')
         os.write(master,b'q');time.sleep(.15)
         # Arrow keys in xterm application-cursor mode, then Enter.
-        os.write(master,b'\x1bOB'*7+b'\r');until(b'Detailed audio settings')
+        os.write(master,b'\x1bOB'*8+b'\r');until(b'Detailed audio settings')
         os.write(master,b'\r');until(b'Current audio settings')
         os.write(master,b'\r');until(b'Evidence:')
         os.write(master,b'q');time.sleep(.15)

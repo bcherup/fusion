@@ -5,13 +5,14 @@ import json
 import re
 import shutil
 import subprocess
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from .common import STATE, BACKUPS, Error, digest, literal, need, run, hostname
 
 MUSIC_ROOT = Path('/usr/share/freeswitch/sounds/music')
 
 PROFILE_FIELDS = (
-    'auth-calls', 'accept-blind-auth', 'accept-blind-reg', 'aggressive-nat-detection',
+    'auth-calls', 'auth-messages', 'accept-blind-auth', 'accept-blind-reg', 'aggressive-nat-detection',
     'apply-nat-acl', 'local-network-acl', 'sip-ip', 'rtp-ip', 'ext-sip-ip', 'ext-rtp-ip',
     'tls', 'tls-only', 'tls-sip-port', 'tls-version', 'tls-verify-policy',
     'inbound-codec-prefs', 'outbound-codec-prefs', 'apply-inbound-acl')
@@ -242,6 +243,37 @@ class Scanner:
             self.row(s, 'Group ' + clean(row['ring_group_extension']), clean(row['ring_group_name']), 'PBX database')
             if value and re.fullmatch(r'(?:local_stream://)?[A-Za-z0-9_./-]+', value): self.row(s, 'Group music', value, 'PBX database; ringback selection')
 
+    def messaging(self):
+        from .texting import inspect_chatplan, route_expression, expression
+        s=self.section('messaging','Text messaging')
+        name=self.c.get('internal_profile','internal')
+        profiles=self.db.rows('SELECT sip_profile_uuid FROM v_sip_profiles WHERE sip_profile_name='+literal(name))
+        need(len(profiles)==1,'Internal phone profile not found')
+        settings=self.db.rows('SELECT sip_profile_setting_value,sip_profile_setting_enabled FROM v_sip_profile_settings WHERE sip_profile_uuid='+
+                              literal(profiles[0]['sip_profile_uuid'])+" AND sip_profile_setting_name='auth-messages'")
+        auth=len(settings)==1 and settings[0]['sip_profile_setting_enabled'] and settings[0]['sip_profile_setting_value']=='true'
+        self.row(s,'Phone MESSAGE authentication','Explicitly enabled' if auth else 'Not confirmed','PBX profile database; confirm on the wire after profile activation')
+        path=Path(self.c.get('freeswitch_conf','/etc/freeswitch'))/'chatplan/default.xml'
+        try:
+            _,_,owned,other=inspect_chatplan(path)
+            route='Toolkit route' if owned else 'Existing custom route' if other else 'No local SIP route'
+            self.row(s,'Local phone chat',route,'FreeSWITCH public chatplan; live delivery needs a device test')
+            if owned:
+                self.row(s,'Route constraint','Profile + sender + recipient + selected domain','Toolkit route in chatplan')
+                chosen=self.c.get('internal_chat',{}).get('extensions',[])
+                if self.c.get('internal_chat',{}).get('enabled') and len(chosen)>=2:
+                    matches=route_expression(owned)==expression(self.domain or self.c['domain'],name,chosen)
+                    self.row(s,'Selected chat extensions',', '.join(chosen) if matches else 'Differs from saved selection',
+                             'Chatplan compared with saved site preferences')
+                    if not matches:self.finding('warning','Messaging','Local chat route differs from the saved extension list.',
+                                                'Review the chatplan and site preferences before changing this feature.')
+            if (owned or other) and not auth:
+                self.finding('warning','Messaging','A SIP chat route exists without explicit MESSAGE authentication.',
+                             'Enable authenticated messaging and verify an unauthenticated request is challenged before using the route.')
+        except (Error,OSError,ET.ParseError):
+            self.row(s,'Local phone chat','Not verified','Chatplan file could not be read safely')
+        self.row(s,'Carrier SMS','Separate integration','Provider webhooks/API and approval are outside local SIP chat')
+
     def dialplan(self):
         if not self.domain_id: return
         s = self.section('audio', 'Call gain and media-security rules')
@@ -418,7 +450,7 @@ class Scanner:
 
     def collect(self):
         for name, operation in [('Scope', self.discover), ('Services', self.services), ('Profiles', self.profiles),
-                                ('Extensions', self.phones), ('Call rules', self.dialplan), ('Gateways', self.gateways),
+                                ('Extensions', self.phones), ('Messaging', self.messaging), ('Call rules', self.dialplan), ('Gateways', self.gateways),
                                 ('Voicemail', self.voicemail), ('Feature records', self.modules),
                                 ('Backups', self.backups), ('Certificate', self.certificate),
                                 ('Network', self.network), ('Update readiness', self.update_readiness)]:

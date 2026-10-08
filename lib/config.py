@@ -10,12 +10,13 @@ import uuid
 from .common import CONFIG, STATE, Error, atomic, hostname, need, validate
 from .features import DEFAULTS, KEYS, number_expression
 
-MODULES=('backup','tls','hardening','audio','secure-calling','carrier-tls','hold-music','call-volume','transcription','ai-summary','smtp','alerts','offsite')
+MODULES=('backup','tls','hardening','audio','internal-chat','secure-calling','carrier-tls','hold-music','call-volume','transcription','ai-summary','smtp','alerts','offsite')
 FIELDS={
  'backup':('backup_min_free_gib',),
  'tls':('domain','lan_ip','tls_port','service_user','service_group'),
  'hardening':('domain','lan_ip','nat_hostname','tls_port','provider_cidrs','provider_acl','internal_profile','external_profile'),
  'audio':('internal_profile','freeswitch_conf'),
+ 'internal-chat':('domain','internal_profile','freeswitch_conf','internal_chat'),
  'transcription':('domain','mailbox','transcription_enabled','whisper_port','whisper_cpu_percent','whisper_memory_mb','service_user','service_group'),
  'smtp':('domain','mailbox','smtp'), 'alerts':('smtp',), 'offsite':('remote_backup',),
  'secure-calling':('domain','internal_profile','secure_calling'),
@@ -45,6 +46,10 @@ def validate_all(c):
         for field in fields:
             need(isinstance(c[key][field],list) and len(c[key][field])<=100,'Select at most 100 destinations')
             number_expression(c[key][field])
+    chat=c['internal_chat']['extensions']
+    need(isinstance(chat,list) and len(chat)<=100 and len(chat)==len(set(chat)), 'Choose up to 100 distinct chat extensions')
+    need(all(isinstance(x,str) and re.fullmatch(r'[0-9]{2,8}',x) for x in chat), 'Chat extensions must be numeric')
+    need(not c['internal_chat']['enabled'] or len(chat)>=2, 'Choose at least two extensions for internal chat')
     need(c['secure_calling']['mode'] in ('optional','mandatory'),'Secure calling mode must be optional or mandatory')
     for key in ('read_level','write_level'):
         need(type(c['call_volume'][key]) is int and -4<=c['call_volume'][key]<=4,'Call gain must be an integer from -4 to 4')
@@ -141,6 +146,8 @@ def wizard(path,template):
         if not section['enabled']:continue
         if key in ('secure_calling','call_volume'):
             section['destinations']=ask('Phone/group destinations (comma separated)',','.join(section['destinations'])).split(',')
+        if key=='internal_chat':
+            section['extensions']=[x.strip() for x in ask('Local extensions that may chat (comma separated)',','.join(section['extensions'])).split(',') if x.strip()]
         if key=='secure_calling':section['mode']=ask('SRTP offer policy: optional/mandatory',section['mode'])
         if key=='carrier_tls':
             for field in ('gateway_uuid','route_uuid','host'):section[field]=ask('Carrier '+field,section[field])

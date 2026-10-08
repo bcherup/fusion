@@ -26,6 +26,7 @@ def parser():
     p.add_argument('--name',choices=[*KEYS,'transcription','alerts'],help='Feature to change')
     toggle=p.add_mutually_exclusive_group();toggle.add_argument('--enable',action='store_true');toggle.add_argument('--disable',action='store_true')
     p.add_argument('--gain-db',type=float);p.add_argument('--read-level',type=int);p.add_argument('--write-level',type=int)
+    p.add_argument('--extensions',help='Comma-separated existing extension numbers for internal-chat')
     p.add_argument('--format',choices=['text','json','html'],default='text',help='Status/doctor report format')
     p.add_argument('--domain',help='Existing SIP domain to scan; discovered automatically when unique')
     p.add_argument('--database',help='Database name for status/doctor/volume discovery')
@@ -91,9 +92,11 @@ def main(argv=None):
         need(a.name and (a.enable or a.disable),'Choose --name and --enable or --disable')
         need(a.gain_db is None or a.name=='hold-music','--gain-db requires hold-music')
         need((a.read_level is None and a.write_level is None) or a.name=='call-volume','Call gain flags require call-volume')
+        need(a.extensions is None or a.name=='internal-chat','--extensions requires internal-chat')
         if a.name=='transcription':c['transcription_enabled']=a.enable
         else:c[KEYS[a.name]]['enabled']=a.enable
         if a.gain_db is not None:c['hold_music']['gain_db']=a.gain_db
+        if a.extensions is not None:c['internal_chat']['extensions']=[x.strip() for x in a.extensions.split(',') if x.strip()]
         for attr in ('read_level','write_level'):
             if getattr(a,attr) is not None:c['call_volume'][attr]=getattr(a,attr)
         c=validate_all(c);mods=[a.name];a.action='configure'

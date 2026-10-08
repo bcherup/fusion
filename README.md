@@ -14,7 +14,7 @@ python3 pbxctl.py
 
 The console scans the server on entry, then stays open between operations. Use **Up/Down and Enter** to select, **Esc or Q** to return, and **Page Up/Page Down** to scroll. Number keys move to the corresponding menu choice; Enter opens it. Resize the terminal to at least 60 columns and 18 rows; wider terminals show a second pane with descriptions. Only the standard Python curses module is required.
 
-The main menu has **Music and phone audio**, **Voicemail**, **Email**, **Backups**, **Call security**, **Updates**, **System status**, **Advanced**, and **Exit**. Each everyday page starts with observed current values above a short list of actions. These values stay visible at normal 80-column terminal widths. Choose **Refresh current status** to scan again; the header shows the scan time. Advanced retains technical configuration, carrier/firewall setup, installation and destructive recovery tools.
+The main menu has **Music and phone audio**, **Text messaging**, **Voicemail**, **Email**, **Backups**, **Call security**, **Updates**, **System status**, **Advanced**, and **Exit**. Each everyday page starts with observed current values above a short list of actions. These values stay visible at normal 80-column terminal widths. Choose **Refresh current status** to scan again; the header shows the scan time. Advanced retains technical configuration, carrier/firewall setup, installation and destructive recovery tools.
 
 For example: **Music and phone audio → Hold-music volume → A little quieter → Apply**. The volume page reads the files/settings when opened and has **Read current level again**. Music shows its measured average file level in dBFS separately from the saved gain adjustment; phone volume shows listening and microphone gain in steps. These are not the handset's hardware volume or a measurement of the complete live call path. Music offers 1 dB quieter/louder, 3 dB quieter, a specific adjustment, and exact restoration of the preserved tracks. These direct controls need no site-configuration wizard or service restart. Phone changes affect new calls.
 
@@ -23,6 +23,10 @@ The first music change preserves the tracks as they exist at that moment. Earlie
 **Voicemail** detects supported existing jobs, including legacy local transcription/summary jobs, and offers Pause or Resume. Pausing disables the timer; a job already running can finish. Models, recordings and generated text are retained. Resume can start the associated model and restore timer startup. Missing, masked or duplicate jobs require review instead of guessing. A disabled toolkit feature must be enabled through its configuration. First-time installation uses the existing module safeguards; legacy migrations are not performed automatically.
 
 **Email** asks for provider settings and a private credential, handles its candidate file internally, and offers a test message. **Backups** offers Back up now and a list of saved copies to verify, plus daily scheduling and optional remote storage. Remote repository access, credentials and initial storage setup still need to be prepared. **Call security** checks all current call legs without requiring a copied UUID; configured policies are labeled separately from actual encrypted-media confirmation. **Updates** separates checking upstream from reviewing and installing an update.
+
+**Text messaging** shows local SIP MESSAGE authentication and phone-to-phone chat routing. **Enable phone-to-phone chat** starts with the enabled extensions found on the server, lets you edit the list, then shows one review before applying. It limits sender and recipient to the selected extensions on the chosen domain and internal profile. The route lives in FreeSWITCH's chatplan outside the application's Git checkout, with a private rollback copy. Setup refuses overlapping custom routes; an exactly equivalent route can be adopted. An authentication change requires an idle internal-profile restart. Destinations must be registered and support SIP messaging; there is no offline message queue.
+
+Local phone chat is separate from carrier SMS to a public number. Provider webhooks, outbound API credentials, and any required messaging registration are not configured by this control. The status page labels carrier SMS as a separate integration.
 
 When an operation needs site preferences for the first time, a short guided setup asks for the existing domain/address, actual trusted administration networks, contact email and mailbox. It never adopts the example network silently. Private console preferences live under `/root/.pbx-toolkit`; reviewed candidates are handled automatically. For a first module configuration or PBX update, the review explicitly includes installing the toolkit/dependencies before applying the selected change. Full fresh-server installation, unusual layouts, provider-specific carrier settings and recovery remain under Advanced.
 
@@ -126,6 +130,7 @@ pbxctl configure --modules backup,audio --apply --allow-restart
 | `carrier-tls` | TLS signaling and required outbound SRTP on one credential-registration trunk |
 | `hold-music` | Adjust a selected music folder in dB; preserve and restore originals |
 | `call-volume` | Separate phone microphone/listening gain on selected call legs |
+| `internal-chat` | Authenticated SIP MESSAGE between selected local extensions |
 | `transcription` | Optional local English Whisper model, external adapter, and new-voicemail worker |
 | `ai-summary` | Optional local voicemail summaries, quoted follow-up requests and callback details |
 | `smtp` | Generic SMTP transport and the selected mailbox email recipient |
@@ -161,6 +166,8 @@ pbxctl feature --name hold-music --enable --gain-db -8 --apply
 pbxctl feature --name call-volume --enable --read-level 0 --write-level -1 --apply
 pbxctl feature --name ai-summary --enable --apply
 pbxctl feature --name ai-summary --disable --apply
+pbxctl feature --name internal-chat --enable --extensions 1000,1005 --apply --allow-restart
+pbxctl feature --name internal-chat --disable --apply
 ```
 
 Omit `--apply` to preview. Toggle commands save successful changes to `/etc/pbxctl/site.json`; a supplied candidate file remains unchanged. New call rules live in tenant-scoped, toolkit-owned dialplans. They do not edit the application's tracked source. Failed configuration attempts restore their recorded changes; later external edits stop automatic reconfiguration for review.

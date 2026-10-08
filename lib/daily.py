@@ -217,7 +217,7 @@ class Daily:
         self.ui.view('Current call audio','\n\n'.join(text))
 
     def everyday(self, area):
-        titles={'audio':'Music and phone audio','voicemail':'Voicemail','email':'Email','backups':'Backups','security':'Call security','updates':'Updates','system':'System status'}
+        titles={'audio':'Music and phone audio','voicemail':'Voicemail','email':'Email','backups':'Backups','security':'Call security','texting':'Text messaging','updates':'Updates','system':'System status'}
         while True:
             now=self.now()
             if area=='audio':items=[('music','Hold-music volume','Read the current file level and adjust it.'),('phone','Phone volume','Read current listening and microphone gain.'),('codecs','Change voice codecs','Use the preferred Opus, G.722 and G.711 settings.'),('calls','Check current calls','See the actual codec and audio-encryption result.')]
@@ -227,6 +227,7 @@ class Daily:
             elif area=='email':items=[('email-setup','Change email settings','Answer the email-provider questions; enter the password privately.'),('test-email','Send a test email','Send to your configured recipient and confirm it arrives.'),('alerts','Email alerts','Pause/resume an existing alert job or set up alerts.')]
             elif area=='backups':items=[('backup','Back up now','Create a private recovery copy.'),('verify','Check a saved backup','Choose a saved copy from the list; no path to type.'),('schedule','Set up daily backups','Create the first backup and enable the daily job.'),('offsite','Off-server copy','Choose whether and where to keep a remote backup.')]
             elif area=='security':items=[('calls','Check current calls','Verify actual encryption separately for each active leg.'),('phone-security','Change phone encryption','Offer or require encryption for selected phones/groups.'),('carrier','Carrier connection settings','Provider-specific preparation and connection settings.')]
+            elif area=='texting':items=[('chat-on','Enable phone-to-phone chat','Choose existing extensions; local SIP chat stays on your PBX.'),('chat-off','Disable toolkit chat route','Stop new phone-to-phone messages through the toolkit route.'),('chat-help','How to test and use texting','Phone chat, incoming carrier SMS, and outgoing carrier SMS are different services.'),('chat-status','View messaging details','Read authentication and chat-route evidence without showing message content.')]
             elif area=='updates':items=[('check-updates','Check for updates','Fetch current upstream information without changing installed code.'),('update','Install PBX updates','Review changes, back up and update while no calls are active.')]
             else:items=[('overview','Full current status','Inspect observed values and their evidence.'),('findings','What needs attention','See findings and suggested next steps.'),('export','Save a report','Export a readable report for your records.')]
             items.append(('refresh','Refresh current status','Read the server again.'))
@@ -237,6 +238,9 @@ class Daily:
                 elif key=='music':self.simple_volume('hold-music')
                 elif key=='phone':self.simple_volume('call-volume')
                 elif key=='calls':self.inspect_calls()
+                elif key in ('chat-on','chat-off'):self.chat_setup(key=='chat-on')
+                elif key=='chat-status':self.show('Messaging status',['messaging','phones'])
+                elif key=='chat-help':self.ui.view('Text messaging guide','Phone chat: send a SIP MESSAGE to 1005@your-sip-domain from another selected, registered extension. Both devices must support SIP chat and be online.\n\nCarrier SMS: incoming and outgoing texts to public phone numbers need a provider webhook/API integration. Outbound texting can require provider approval or registration. This local chat control does not enable carrier SMS, queue offline messages, or make phone chats appear on every device.')
                 elif key in ('transcription','ai-summary','alerts'):
                     status=now.transcription() if key=='transcription' else now.summaries() if key=='ai-summary' else now.service(('pbxctl-health.timer','fusionpbx-health.timer'))
                     if status=='Paused' and now.value('modules',key,'')=='Recorded enabled: false' and key!='alerts':self.install_voice_feature(key)
@@ -267,6 +271,27 @@ class Daily:
                 elif key=='overview':self.show('Observed system settings',[s['id'] for s in (self.report or {}).get('sections',[])])
                 elif key=='export':self.export()
             except (Error,OSError,ValueError,KeyError) as e:self.ui.view('Needs attention',str(e) if isinstance(e,Error) else 'This operation could not complete. Refresh the status and check the entered values; no automatic retry was made.')
+
+    def chat_setup(self, enabled):
+        c=self.working()
+        if c is None:return
+        c=copy.deepcopy(c)
+        current=self.now().summary('texting')
+        if enabled:
+            found=sorted({r['item'][10:] for r in self.now().sections.get('phones',[])
+                          if r['item'].startswith('Extension ') and r['item'][10:].isdigit() and
+                          r['observed'].lower()=='enabled: true'})
+            initial=c['internal_chat']['extensions'] or found
+            if len(initial)<2:
+                self.ui.view('More phones needed','At least two enabled numeric extensions are needed. Add phones in the PBX first, then refresh this page.');return
+            value=self.ui.prompt('Who can chat?',', '.join(initial),'Comma-separated existing extension numbers. Only these extensions can send to each other through this route.')
+            if value is None:return
+            c['internal_chat']['extensions']=[x.strip() for x in value.split(',') if x.strip()]
+        c['internal_chat']['enabled']=enabled
+        before='\n'.join(k+': '+v for k,v in current)
+        after=('On for '+', '.join(c['internal_chat']['extensions']) if enabled else 'Off')
+        detail='\n\nThis is local SIP chat only. Carrier SMS is separate.'
+        self.apply_preferences(c,'internal-chat','Current messaging:\n'+before+'\n\nNew local chat: '+after+detail,restart=enabled)
 
     def current_service_details(self):
         from .console import section_text

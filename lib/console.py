@@ -202,6 +202,7 @@ EDITORS = {
     'site':('Site settings', ['domain','nat_hostname','lan_ip','management_cidrs','lan_ipv6_cidrs','provider_cidrs','provider_acl','acme_email','mailbox']),
     'hold-music':('Hold music', ['hold_music.enabled','hold_music.gain_db','hold_music.directory','hold_music.stream']),
     'call-volume':('Phone volume', ['call_volume.enabled','call_volume.read_level','call_volume.write_level','call_volume.extensions','call_volume.destinations']),
+    'internal-chat':('Internal phone chat', ['internal_chat.enabled','internal_chat.extensions']),
     'secure-calling':('Phone encryption', ['secure_calling.enabled','secure_calling.mode','secure_calling.destinations']),
     'carrier-tls':('Carrier encryption', ['carrier_tls.enabled','carrier_tls.gateway_uuid','carrier_tls.route_uuid','carrier_tls.host','carrier_tls.server_port','carrier_tls.listen_port','carrier_tls.portal_ready','provider_cidrs']),
     'transcription':('Voicemail transcription', ['transcription_enabled','mailbox','whisper_port','whisper_cpu_percent','whisper_memory_mb']),
@@ -217,6 +218,7 @@ LABELS = {
     'call_volume.read_level':'Microphone gain (steps)','call_volume.write_level':'Listening gain (steps)',
     'call_volume.extensions':'Originating extensions','call_volume.destinations':'Answering extensions / groups',
     'secure_calling.destinations':'Extensions / groups','secure_calling.mode':'SRTP policy',
+    'internal_chat.extensions':'Phones allowed to chat',
     'carrier_tls.portal_ready':'Provider portal is prepared','smtp.auth':'SMTP authentication',
     'smtp.security':'SMTP security','smtp.from_address':'Sender address','smtp.recipient':'Recipient address',
     'transcription_enabled':'Enable transcription','backup_min_free_gib':'Minimum free disk (GiB)',
@@ -230,6 +232,7 @@ HELP = {
     'call_volume.read_level':'-4 to +4 steps. 0 leaves the signal unchanged. Read is phone microphone to PBX.',
     'call_volume.write_level':'-4 to +4 steps. 0 leaves the signal unchanged. Write is PBX audio to the phone.',
     'secure_calling.mode':'Optional allows clear-audio fallback. Mandatory requires compatible SRTP. Verify each leg with an actual call.',
+    'internal_chat.extensions':'At least two existing numeric extensions, separated by commas. This is local SIP chat, not carrier SMS.',
     'carrier_tls.portal_ready':'Confirm the provider media policy and inbound TLS routing are already prepared before enabling this feature.',
     'remote_backup.repository':'SFTP or HTTPS S3 repository, without inline passwords. Credentials stay in private files.',
 }
@@ -544,7 +547,7 @@ class Console(Daily):
     def run(self):
         try:self.refresh()
         except (Error,OSError,ValueError):self.ui.view('Scan unavailable','The scan could not start. Select a valid site/domain or use install and configure.');self.report={'counts':{},'findings':[],'sections':[],'domain':None,'scanned_at':'Not scanned'}
-        choices=[('audio','Music and phone audio','Read current levels; adjust music, microphone and listening volume.'),('voicemail','Voicemail','Current transcription/summary status, with pause and resume.'),('email','Email','Current mail server, simple setup, test email and alerts.'),
+        choices=[('audio','Music and phone audio','Read current levels; adjust music, microphone and listening volume.'),('texting','Text messaging','Set up local phone chat and see what carrier SMS needs.'),('voicemail','Voicemail','Current transcription/summary status, with pause and resume.'),('email','Email','Current mail server, simple setup, test email and alerts.'),
                  ('backups','Backups','Back up now, check a saved copy, or set up a schedule.'),('security','Call security','Current encryption settings and actual call checks.'),('updates','Updates','Check what is available, then review and install.'),
                  ('system','System status','Current configuration, recommendations, refresh and reports.'),('advanced','Advanced','Installation, carrier/firewall details, recovery and technical settings.'),('exit','Exit','Return to the SSH shell.')]
         while True:
